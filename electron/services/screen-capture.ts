@@ -49,7 +49,8 @@ async function withOverlayPaused<T>(fn: () => Promise<T>): Promise<T> {
   const resume = pauseOverlayForCapture?.()
   try {
     // Overlay hide is async on Wayland/XWayland — give the compositor time.
-    const settleMs = isPersistentCaptureLive() ? 60 : process.platform === 'linux' ? 180 : 70
+    // Persistent stream is already live most of the time; keep settle short.
+    const settleMs = isPersistentCaptureLive() ? 40 : process.platform === 'linux' ? 140 : 50
     await new Promise((r) => setTimeout(r, settleMs))
     return await fn()
   } finally {
@@ -70,8 +71,10 @@ async function captureViaDesktopCapturer(preferred?: Electron.Display): Promise<
     return { png: thumbCache.png, width: thumbCache.width, height: thumbCache.height }
   }
 
-  // Size thumbs for the largest display so one getSources call covers multi-monitor.
-  // (Calling getSources once per display re-triggers Wayland/PipeWire prompts.)
+  // Cap thumbnail size — 4K full-res thumbs are expensive and OCR crops
+  // don't need more than 1440p source after upscale.
+  const MAX_THUMB_W = 2560
+  const MAX_THUMB_H = 1440
   const displays = screen.getAllDisplays()
   let thumbW = 0
   let thumbH = 0
@@ -79,6 +82,11 @@ async function captureViaDesktopCapturer(preferred?: Electron.Display): Promise<
     const scale = d.scaleFactor || 1
     thumbW = Math.max(thumbW, Math.round(d.size.width * scale))
     thumbH = Math.max(thumbH, Math.round(d.size.height * scale))
+  }
+  if (thumbW > MAX_THUMB_W || thumbH > MAX_THUMB_H) {
+    const scale = Math.min(MAX_THUMB_W / Math.max(1, thumbW), MAX_THUMB_H / Math.max(1, thumbH))
+    thumbW = Math.max(1, Math.round(thumbW * scale))
+    thumbH = Math.max(1, Math.round(thumbH * scale))
   }
 
   const sources = await desktopCapturer.getSources({

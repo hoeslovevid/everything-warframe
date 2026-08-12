@@ -6,6 +6,10 @@ import { recognizeRivenBlocks, warmupOcr } from './ocr'
 import { waitForOcrUiReady } from './ocr-readiness'
 import { parseRivenOcr, recommendRolls } from './riven-grader'
 import { enrichRivensWithMarket } from './riven-market'
+import {
+  ensurePersistentCapture,
+  isPersistentCaptureLive,
+} from './persistent-screen-capture'
 import { captureRivenCompare } from './screen-capture'
 import { recordRivenScan, updateRivenHistoryPrices } from './riven-history'
 
@@ -104,20 +108,27 @@ export async function scanRivens(trigger: 'manual' | 'log' = 'manual'): Promise<
   if (state.scanning) return state
   cancelHide()
 
-  // Hide prior results during capture so OCR cannot read our grader panel.
-  // (Overlay is also content-protected + moved off-screen in screen-capture.)
+  // Keep the grader popup active while scanning (same as relics) so the hotkey
+  // shows “Reading…” immediately. Capture still pauses/hides the overlay window.
   state = {
     ...state,
     scanning: true,
-    active: false,
+    active: true,
     trigger,
     error: null,
   }
   emit()
-  // Let the renderer drop the panel before we snapshot.
-  await new Promise((r) => setTimeout(r, 80))
 
   try {
+    // Warm persistent capture while the compositor settles — avoids a cold
+    // desktopCapturer full-res thumb on the critical path.
+    await Promise.all([
+      new Promise<void>((r) => setTimeout(r, 50)),
+      isPersistentCaptureLive()
+        ? Promise.resolve(true)
+        : ensurePersistentCapture().catch(() => false),
+    ])
+
     if (trigger === 'log') {
       // Poll until Cycle cards look painted (cap = old fixed animation delay).
       await waitForOcrUiReady('riven')
@@ -197,7 +208,7 @@ export async function scanRivens(trigger: 'manual' | 'log' = 'manual'): Promise<
 
     // Retry capture when still weak — common while Cycle UI is animating.
     if (weakRead) {
-      const retryDelay = process.platform === 'linux' ? 1100 : 900
+      const retryDelay = process.platform === 'linux' ? 600 : 400
       await new Promise((r) => setTimeout(r, retryDelay))
       const retry = await captureRivenCompare()
       if (retry && retry.crops.length >= 2) {

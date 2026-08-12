@@ -311,6 +311,11 @@ export const WHATS_NEW: Record<string, string[]> = {
     'Companion layout: flex + absolute fill so Dashboard/Settings scroll reliably in windowed mode',
     'Fix Help/Settings panel crush: parked Relic Planner no longer locks companion-main to overflow:hidden',
   ],
+  '0.9.72': [
+    'Riven hotkey: show grader overlay immediately (“Reading…”) and force-show on manual scan',
+    'Riven scan perf: shorter settle/retry, warm capture stream in parallel, skip off-screen park hitch',
+    'Cap desktopCapturer thumbs at 1440p; warm relic + riven OCR together at startup',
+  ],
 }
 
 export function getWhatsNewBullets(version: string): string[] {

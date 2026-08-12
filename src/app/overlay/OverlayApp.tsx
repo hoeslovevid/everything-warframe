@@ -86,10 +86,16 @@ export function OverlayApp() {
       (id) => settings.modules[id] && id !== 'relics' && id !== 'rivens',
     )
     const next = [...enabled]
-    if (settings.modules.relics && relicScan.active) next.push('relics')
-    if (settings.modules.rivens && rivenScan.active) next.push('rivens')
+    if (settings.modules.relics && (relicScan.active || relicScan.scanning)) next.push('relics')
+    if (settings.modules.rivens && (rivenScan.active || rivenScan.scanning)) next.push('rivens')
     return next
-  }, [settings.modules, relicScan.active, rivenScan.active])
+  }, [
+    settings.modules,
+    relicScan.active,
+    relicScan.scanning,
+    rivenScan.active,
+    rivenScan.scanning,
+  ])
 
   const onAnchorsChange = useCallback((next: Partial<Record<ModuleId, PanelAnchor>>) => {
     anchorsLocalRef.current = true

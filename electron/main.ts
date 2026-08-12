@@ -228,8 +228,14 @@ async function runRelicScan(trigger: 'manual' | 'log', squadSize?: number | null
     const next = updateSettings({ overlayVisible: true })
     broadcastSettings(next)
   }
-  await refreshOverlayWarframeGate({ force: true })
-  syncOverlayWindowVisibility()
+  // Manual hotkey: force the overlay up (same focus-race fix as riven).
+  if (trigger === 'manual') {
+    overlayWarframeGateOk = true
+    applyOverlayWindowVisible(true, { silent: true })
+  } else {
+    await refreshOverlayWarframeGate({ force: true })
+    syncOverlayWindowVisibility()
+  }
   setRelicSquadSizeHint(squadSize ?? logWatcher.getSquadSizeHint())
   const state = await scanRelicRewards(trigger)
   broadcastRelicScan()
@@ -289,8 +295,14 @@ async function runRivenScan(trigger: 'manual' | 'log') {
     const next = updateSettings({ overlayVisible: true })
     broadcastSettings(next)
   }
-  await refreshOverlayWarframeGate({ force: true })
-  syncOverlayWindowVisibility()
+  // Manual hotkey = user is looking at Cycle; don't let a focus race hide the overlay.
+  if (trigger === 'manual') {
+    overlayWarframeGateOk = true
+    applyOverlayWindowVisible(true, { silent: true })
+  } else {
+    await refreshOverlayWarframeGate({ force: true })
+    syncOverlayWindowVisibility()
+  }
   const state = await scanRivens(trigger)
   broadcastRivenScan()
   if ((state.current || state.reroll) && !state.error && settings.rivenSoundEnabled) {
@@ -1534,9 +1546,9 @@ app.whenReady().then(async () => {
     } catch {
       // ignore
     }
-    // Windows: park off-screen so sticky capture APIs cannot sample overlay pixels.
-    // Linux/Wayland: setBounds is unreliable and can leave the overlay "stuck" off-screen.
-    const parkOffscreen = process.platform === 'win32'
+    // Windows: contentProtection already excludes us from DWM capture.
+    // Skip off-screen park — setBounds round-trips hitch the UI for little gain.
+    const parkOffscreen = false
     const bounds = win.getBounds()
     if (parkOffscreen) {
       try {
@@ -1680,11 +1692,10 @@ app.whenReady().then(async () => {
         const settings = loadSettings()
         console.info('[Everything Warframe] Warming OCR / catalogs…')
         try {
-          if (settings.modules.relics) {
-            await warmupRelicScanner()
-          } else if (settings.modules.rivens) {
-            await warmupRivenScanner()
-          }
+          await Promise.all([
+            settings.modules.relics ? warmupRelicScanner() : Promise.resolve(),
+            settings.modules.rivens ? warmupRivenScanner() : Promise.resolve(),
+          ])
           if (
             process.platform !== 'linux' ||
             settings.onboarding.linuxCaptureAck

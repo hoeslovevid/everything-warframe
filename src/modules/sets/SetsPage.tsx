@@ -11,6 +11,7 @@ type Props = {
   enabled: boolean
   onOpenSettings: () => void
   onOpenFoundry?: (uniqueName: string) => void
+  onSyncInventory?: () => void
   searchPrefill?: string | null
   onSearchPrefillConsumed?: () => void
 }
@@ -32,6 +33,7 @@ export function SetsPage({
   enabled,
   onOpenSettings,
   onOpenFoundry,
+  onSyncInventory,
   searchPrefill,
   onSearchPrefillConsumed,
 }: Props) {
@@ -168,6 +170,7 @@ export function SetsPage({
         inventory={inventory}
         fissureMode
         onOpenInventory={onOpenSettings}
+        onSyncInventory={onSyncInventory}
       />
 
       <div className="foundry-layout">

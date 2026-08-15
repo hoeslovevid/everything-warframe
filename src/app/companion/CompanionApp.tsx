@@ -25,6 +25,7 @@ import { GettingStarted } from '../../components/GettingStarted'
 import { AppTour, TourStep } from '../../components/AppTour'
 import { StatusStrip } from '../../components/StatusStrip'
 import { TodaySummary } from '../../components/TodaySummary'
+import { WeeklyResetCard } from '../../components/WeeklyResetCard'
 import { HotkeySheet } from '../../components/HotkeySheet'
 import { HotkeyInput } from '../../components/HotkeyInput'
 import { HelpPage } from '../../components/HelpPage'
@@ -51,6 +52,8 @@ import { MarketPage } from '../../modules/market/MarketPage'
 import { LfgPage, type LfgPrefill } from '../../modules/lfg/LfgPage'
 import { RelicPlannerPage } from '../../modules/relicPlanner/RelicPlannerPage'
 import { MasteryPage } from '../../modules/mastery/MasteryPage'
+import { LoadoutPage } from '../../modules/loadout/LoadoutPage'
+import { ArbitrationLogPanel } from '../../modules/arbitrationLog/ArbitrationLogPanel'
 import { InventoryPage } from '../../modules/inventory/InventoryPage'
 import { SetsPage } from '../../modules/sets/SetsPage'
 import { LinuxCaptureWizard } from '../../components/LinuxCaptureWizard'
@@ -75,6 +78,8 @@ type Tab =
   | 'sets'
   | 'relicPlanner'
   | 'mastery'
+  | 'loadout'
+  | 'arbitrationLog'
   | 'inventory'
   | 'market'
   | 'lfg'
@@ -94,6 +99,7 @@ const HOTKEY_LABELS: Record<HotkeyRegistration['id'], string> = {
   dismissRivens: 'Dismiss riven popup',
   editLayout: 'Move panels (unlock drag)',
   toggleWorldstatePanels: 'Hide / restore worldstate panels',
+  toggleQuietFocus: 'Quiet focus (fissures + OCR)',
   toggleModuleCycles: 'Toggle Cycles',
   toggleModuleFissures: 'Toggle Fissures',
   toggleModuleBaro: 'Toggle Baro',
@@ -318,6 +324,8 @@ export function CompanionApp() {
       { id: 'sets', label: 'Sets' },
       { id: 'relicPlanner', label: 'Relic Planner' },
       { id: 'mastery', label: 'Mastery' },
+      { id: 'loadout', label: 'Loadout coaching' },
+      { id: 'arbitrationLog', label: 'Arbitration haul' },
       { id: 'inventory', label: 'Inventory' },
       { id: 'market', label: 'Market' },
       { id: 'lfg', label: 'LFG' },
@@ -477,6 +485,34 @@ export function CompanionApp() {
       goTab('settings')
     })
   }, [goTab])
+
+  useEffect(() => {
+    if (!window.voidlens?.onCompanionNavigate) return
+    return window.voidlens.onCompanionNavigate((next) => {
+      const allowed: Tab[] = [
+        'dashboard',
+        'modules',
+        'foundry',
+        'sets',
+        'relicPlanner',
+        'mastery',
+        'loadout',
+        'arbitrationLog',
+        'inventory',
+        'market',
+        'lfg',
+        'layout',
+        'settings',
+        'help',
+      ]
+      if (allowed.includes(next as Tab)) goTab(next as Tab)
+    })
+  }, [goTab])
+
+  useEffect(() => {
+    if (!settings.eeLogPath?.trim() || settings.onboarding.eeLogAck) return
+    patchOnboarding({ eeLogAck: true })
+  }, [settings.eeLogPath, settings.onboarding.eeLogAck, patchOnboarding])
 
   useEffect(() => {
     if (!ready) return
@@ -668,6 +704,32 @@ export function CompanionApp() {
               Mastery
             </button>
             <button
+              className={`nav-btn ${tab === 'loadout' ? 'active' : ''}`}
+              title="Owned gear Forma / rank coaching"
+              onClick={() => goTab('loadout')}
+            >
+              <span className="nav-btn__icon" aria-hidden>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M3 11.5 8 3.5l5 8H3Z" strokeLinejoin="round" />
+                  <path d="M5.5 9.5h5" strokeLinecap="round" />
+                </svg>
+              </span>
+              Loadout
+            </button>
+            <button
+              className={`nav-btn ${tab === 'arbitrationLog' ? 'active' : ''}`}
+              title="Arbitration rare haul this session"
+              onClick={() => goTab('arbitrationLog')}
+            >
+              <span className="nav-btn__icon" aria-hidden>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <circle cx="8" cy="8" r="5.5" />
+                  <path d="M8 5v3.2l2 1.2" strokeLinecap="round" />
+                </svg>
+              </span>
+              Arb haul
+            </button>
+            <button
               className={`nav-btn ${tab === 'inventory' ? 'active' : ''}`}
               title="Browse synced inventory counts"
               onClick={() => goTab('inventory')}
@@ -797,6 +859,7 @@ export function CompanionApp() {
 
                 <GettingStarted
                   settings={settings}
+                  inventory={inventory}
                   onUpdate={(partial) => void updateSettings(partial)}
                   onGoModules={() => goTab('modules')}
                   onGoLayout={() => goTab('layout')}
@@ -804,7 +867,10 @@ export function CompanionApp() {
                     patchOnboarding({ inventoryTouched: true })
                     goTab('inventory')
                   }}
+                  onGoSettings={() => goTab('settings')}
                   onStartTour={() => setTourOpen(true)}
+                  onDetectEeLog={() => void window.voidlens?.detectEeLogPath?.()}
+                  onSyncInventory={() => void syncInventoryNow()}
                 />
 
                 {relicScan.celebration && !settings.onboarding.firstRelicSuccessAck ? (
@@ -896,6 +962,15 @@ export function CompanionApp() {
                     void updateSettings(applyPlayProfile(settings, 'baro-day'))
                   }
                 />
+
+                <div style={{ margin: '16px 0' }}>
+                  <WeeklyResetCard
+                    data={data}
+                    settings={settings}
+                    onNavigate={(t) => goTab(t as typeof tab)}
+                    onToggleNightwaveDone={(id) => toggleNightwaveDone(id)}
+                  />
+                </div>
 
                 <div className="toolbar" data-tour="toolbar-hotkeys">
                   <button className="btn primary" onClick={() => void refresh()}>
@@ -1016,6 +1091,8 @@ export function CompanionApp() {
                         pushToast(`LFG form ready for “${relicLabel}”`, 'ok', 4500)
                         goTab('lfg')
                       }}
+                      onSyncInventory={() => void syncInventoryNow()}
+                      onOpenSettings={() => goTab('settings')}
                     />
                   ) : null}
                 </div>
@@ -1138,6 +1215,7 @@ export function CompanionApp() {
               <FoundryPage
                 enabled={settings.modules.foundry}
                 onOpenSettings={() => goTab('settings')}
+                onSyncInventory={() => void syncInventoryNow()}
                 searchPrefill={foundrySearchPrefill}
                 onSearchPrefillConsumed={() => setFoundrySearchPrefill(null)}
               />
@@ -1148,6 +1226,7 @@ export function CompanionApp() {
                 enabled
                 onOpenSettings={() => goTab('settings')}
                 onOpenFoundry={() => goTab('foundry')}
+                onSyncInventory={() => void syncInventoryNow()}
                 searchPrefill={setsSearchPrefill}
                 onSearchPrefillConsumed={() => setSetsSearchPrefill(null)}
               />
@@ -1174,6 +1253,17 @@ export function CompanionApp() {
               />
             ) : null}
 
+            {tab === 'loadout' ? (
+              <LoadoutPage
+                onOpenSettings={() => goTab('settings')}
+                onSyncInventory={() => void syncInventoryNow()}
+              />
+            ) : null}
+
+            {tab === 'arbitrationLog' ? (
+              <ArbitrationLogPanel onSyncInventory={() => void syncInventoryNow()} />
+            ) : null}
+
             {tab === 'inventory' ? (
               <InventoryPage onOpenSettings={() => goTab('settings')} />
             ) : null}
@@ -1187,6 +1277,8 @@ export function CompanionApp() {
                   setHelpScrollTo('help-wfm-jwt')
                   goTab('help')
                 }}
+                onOpenSettings={() => goTab('settings')}
+                onSyncInventory={() => void syncInventoryNow()}
                 onFirstListCelebration={() => {
                   if (!settings.onboarding.firstMarketListAck) {
                     patchOnboarding({ firstMarketListAck: true })
@@ -1497,6 +1589,10 @@ export function CompanionApp() {
                         const v = e.target.value
                         void updateSettings({
                           ocrDisplayId: v === 'primary' ? null : Number(v),
+                          onboarding: {
+                            ...settings.onboarding,
+                            ocrMonitorAck: true,
+                          },
                         })
                       }}
                     >
@@ -1666,10 +1762,16 @@ export function CompanionApp() {
 
                   <Panel title="Companion">
                     <ToggleRow
-                      label="Quiet mode"
+                      label="Quiet launch (tray)"
                       description="After first-run checklist, start minimized to the tray"
                       checked={settings.quietMode}
                       onChange={(enabled) => void updateSettings({ quietMode: enabled })}
+                    />
+                    <ToggleRow
+                      label="Quiet focus (overlay)"
+                      description={`${prettyHotkey(settings.hotkeys.toggleQuietFocus)} — only fissures + relic/riven OCR. Mission strip also toggles.`}
+                      checked={settings.quietFocusActive}
+                      onChange={() => void window.voidlens?.toggleQuietFocus?.()}
                     />
                     <ToggleRow
                       label="Relic scan chime"
@@ -1927,6 +2029,25 @@ export function CompanionApp() {
                       <p className="muted" style={{ margin: '4px 0 0', fontSize: '0.75rem' }}>
                         Clears Cycles, Fissures, Baro, etc. Second press restores. Relic/riven
                         popups stay available.
+                      </p>
+                    </div>
+                    <div className="field">
+                      <label htmlFor="hk-quiet-focus">Quiet focus (fissures + OCR)</label>
+                      <HotkeyInput
+                        id="hk-quiet-focus"
+                        value={settings.hotkeys.toggleQuietFocus}
+                        onChange={(next) =>
+                          void updateSettings({
+                            hotkeys: {
+                              ...settings.hotkeys,
+                              toggleQuietFocus: next,
+                            },
+                          })
+                        }
+                      />
+                      <p className="muted" style={{ margin: '4px 0 0', fontSize: '0.75rem' }}>
+                        Leaves only Fissures + Relic/Riven OCR modules. Second press restores your
+                        previous module set.
                       </p>
                     </div>
                     <p className="muted" style={{ margin: '12px 0 8px', fontSize: '0.78rem' }}>

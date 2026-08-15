@@ -111,6 +111,10 @@ function mergeSettings(raw: Partial<AppSettings> | null | undefined): AppSetting
         typeof raw.hotkeys?.toggleWorldstatePanels === 'string'
           ? raw.hotkeys.toggleWorldstatePanels
           : base.hotkeys.toggleWorldstatePanels,
+      toggleQuietFocus:
+        typeof raw.hotkeys?.toggleQuietFocus === 'string'
+          ? raw.hotkeys.toggleQuietFocus
+          : base.hotkeys.toggleQuietFocus,
       toggleModuleCycles:
         typeof raw.hotkeys?.toggleModuleCycles === 'string'
           ? raw.hotkeys.toggleModuleCycles
@@ -418,6 +422,13 @@ function mergeSettings(raw: Partial<AppSettings> | null | undefined): AppSetting
         ? Math.floor(raw.widgetServerPort)
         : base.widgetServerPort,
     quietMode: raw.quietMode ?? base.quietMode,
+    quietFocusActive:
+      typeof (raw as { quietFocusActive?: boolean }).quietFocusActive === 'boolean'
+        ? (raw as { quietFocusActive: boolean }).quietFocusActive
+        : base.quietFocusActive,
+    quietFocusModulesBackup:
+      (raw as { quietFocusModulesBackup?: AppSettings['quietFocusModulesBackup'] })
+        .quietFocusModulesBackup ?? base.quietFocusModulesBackup,
     navCollapsed: raw.navCollapsed ?? base.navCollapsed,
     overlayOnlyInWarframe:
       typeof (raw as { overlayOnlyInWarframe?: boolean }).overlayOnlyInWarframe === 'boolean'

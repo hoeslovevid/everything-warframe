@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AppSettings, MarketQuote, WfmContract, WfmOrder, WfmSession } from '../../../shared/types'
 import { EmptyState } from '../../components/EmptyState'
+import { InventoryStaleBanner } from '../../components/InventoryStaleBanner'
 import { Panel } from '../../components/Panel'
+import { useInventory } from '../../hooks/useInventory'
 import { useRelicScan } from '../../hooks/useRelicScan'
 import { useRivenScan } from '../../hooks/useRivenScan'
 import { copyText } from '../../lib/tradeClipboard'
@@ -28,6 +30,8 @@ type Props = {
   enabled: boolean
   onUpdate: (partial: Partial<AppSettings>) => void
   onOpenHelp?: () => void
+  onOpenSettings?: () => void
+  onSyncInventory?: () => void
   onFirstListCelebration?: () => void
   focusItem?: string | null
   onFocusItemConsumed?: () => void
@@ -87,10 +91,13 @@ export function MarketPage({
   enabled,
   onUpdate,
   onOpenHelp,
+  onOpenSettings,
+  onSyncInventory,
   onFirstListCelebration,
   focusItem,
   onFocusItemConsumed,
 }: Props) {
+  const { status: inventory } = useInventory()
   const [tab, setTab] = useState<MarketTab>('watchlist')
   const [draft, setDraft] = useState('')
   const [quotes, setQuotes] = useState<MarketQuote[]>([])
@@ -615,6 +622,12 @@ export function MarketPage({
         dismissed={settings.marketSessionGuideDismissed}
         onDismiss={() => onUpdate({ marketSessionGuideDismissed: true })}
         onGoTab={(id) => setTab(id as MarketTab)}
+      />
+
+      <InventoryStaleBanner
+        inventory={inventory}
+        onOpenInventory={onOpenSettings}
+        onSyncInventory={onSyncInventory}
       />
 
       <div className="vl-segment vl-segment--wrap market-tabs" role="tablist" aria-label="Market sections">

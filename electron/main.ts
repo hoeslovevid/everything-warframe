@@ -135,6 +135,7 @@ import {
   ModuleId,
   MODULE_TOGGLE_HOTKEY_IDS,
   MODULE_TOGGLE_HOTKEY_TO_ID,
+  OVERLAY_MODULE_IDS,
   RelicPlannerQuery,
   WORLDSTATE_MODULE_IDS,
   WorldstateSnapshot,
@@ -453,10 +454,19 @@ async function refreshWorldstate(force = false): Promise<WorldstateSnapshot> {
         deepArchimedea: null,
         sortie: null,
         alerts: [],
+        circuit: null,
       }
     }
   }
   broadcastWorldstate(worldstateCache)
+  try {
+    if (worldstateCache.arbitration?.node) {
+      const { noteActiveArbitration } = await import('./services/arbitration-log')
+      noteActiveArbitration(worldstateCache.arbitration.node)
+    }
+  } catch {
+    // ignore
+  }
   try {
     const { checkBaroArrivalNotify } = await import('./services/baro-arrival')
     checkBaroArrivalNotify(worldstateCache)
@@ -923,6 +933,7 @@ const HOTKEY_FALLBACKS: Record<keyof AppSettings['hotkeys'], string[]> = {
   dismissRivens: ['Alt+Shift+H', 'F6'],
   editLayout: ['Control+Tab', 'Alt+Shift+E', 'Alt+Shift+X', 'F7'],
   toggleWorldstatePanels: ['Alt+Shift+W', 'CommandOrControl+Alt+W'],
+  toggleQuietFocus: ['Alt+Shift+Q', 'CommandOrControl+Alt+Q'],
   toggleModuleCycles: [],
   toggleModuleFissures: [],
   toggleModuleBaro: [],
@@ -935,6 +946,47 @@ const HOTKEY_FALLBACKS: Record<keyof AppSettings['hotkeys'], string[]> = {
 
 /** Snapshot of worldstate module enables before a clear — restored on next press. */
 let worldstatePanelsSnapshot: Partial<Record<ModuleId, boolean>> | null = null
+
+function toggleQuietFocus() {
+  const settings = loadSettings()
+  if (settings.quietFocusActive) {
+    const backup = settings.quietFocusModulesBackup || worldstatePanelsSnapshot
+    const modules = { ...settings.modules }
+    if (backup) {
+      for (const id of OVERLAY_MODULE_IDS) {
+        if (backup[id] !== undefined) modules[id] = Boolean(backup[id])
+      }
+    } else {
+      for (const id of WORLDSTATE_MODULE_IDS) {
+        if (id !== 'fissures') modules[id] = true
+      }
+    }
+    const next = updateSettings({
+      modules,
+      quietFocusActive: false,
+      quietFocusModulesBackup: null,
+    })
+    broadcastSettings(next)
+    console.info('[Everything Warframe] Quiet focus off — modules restored')
+    return
+  }
+
+  const snap: Partial<Record<ModuleId, boolean>> = {}
+  for (const id of OVERLAY_MODULE_IDS) {
+    snap[id] = settings.modules[id]
+  }
+  const modules = { ...settings.modules }
+  for (const id of OVERLAY_MODULE_IDS) {
+    modules[id] = id === 'fissures' || id === 'relics' || id === 'rivens'
+  }
+  const next = updateSettings({
+    modules,
+    quietFocusActive: true,
+    quietFocusModulesBackup: snap,
+  })
+  broadcastSettings(next)
+  console.info('[Everything Warframe] Quiet focus on — fissures + OCR only')
+}
 
 function toggleModulePanel(id: ModuleId) {
   const settings = loadSettings()
@@ -1080,6 +1132,9 @@ function registerHotkeys() {
   })
   bind('toggleWorldstatePanels', () => {
     toggleWorldstatePanels()
+  })
+  bind('toggleQuietFocus', () => {
+    toggleQuietFocus()
   })
   for (const hotkeyId of MODULE_TOGGLE_HOTKEY_IDS) {
     const moduleId = MODULE_TOGGLE_HOTKEY_TO_ID[hotkeyId]
@@ -1234,6 +1289,19 @@ function registerIpc() {
     broadcastSettings(next)
     return next
   })
+  ipcMain.handle('companion:navigate', (_e, tab: string) => {
+    createCompanionWindow()
+    raiseCompanion()
+    const t = typeof tab === 'string' ? tab.trim() : ''
+    if (t && companionWindow && !companionWindow.isDestroyed()) {
+      companionWindow.webContents.send('companion:navigate', t)
+    }
+    return true
+  })
+  ipcMain.handle('overlay:toggleQuietFocus', () => {
+    toggleQuietFocus()
+    return loadSettings()
+  })
   ipcMain.handle('dialog:pickEeLog', async () => {
     const result = await dialog.showOpenDialog({
       title: 'Select Warframe EE.log',
@@ -1328,6 +1396,18 @@ function registerIpc() {
   ipcMain.handle('inventory:diff', () => getInventoryDiff())
   ipcMain.handle('session:haul', () => getSessionHaul())
   ipcMain.handle('session:haulClear', () => clearSessionHaul())
+  ipcMain.handle('loadout:get', async () => {
+    const { getLoadoutSnapshot } = await import('./services/loadout')
+    return getLoadoutSnapshot()
+  })
+  ipcMain.handle('arb:log', async () => {
+    const { getArbitrationLog } = await import('./services/arbitration-log')
+    return getArbitrationLog()
+  })
+  ipcMain.handle('arb:logClear', async () => {
+    const { clearArbitrationLog } = await import('./services/arbitration-log')
+    return clearArbitrationLog()
+  })
   ipcMain.handle('inventory:browse', async (_e, query) => {
     const sellableOnly = Boolean(query?.sellableOnly)
     const enrichPrices = sellableOnly || Boolean(query?.enrichPrices)
@@ -1689,6 +1769,9 @@ app.whenReady().then(async () => {
       }
       console.info('[Everything Warframe] EE.log riven reroll ended — dismissing popup')
       dismissRivenPopup()
+    } else if (event.type === 'mission_complete') {
+      console.info('[Everything Warframe] EE.log mission complete — arming arbitration haul window')
+      void import('./services/arbitration-log').then((m) => m.noteMissionComplete())
     }
   })
   // Faster poll — reward pick timer is tight; Windows was 1500ms and often late (#8).

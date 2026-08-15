@@ -324,6 +324,19 @@ export const WHATS_NEW: Record<string, string[]> = {
     'Remember last confident OCR theme + slot count for faster Auto scans',
     'Hotkey conflict warning in Settings; display remount wizard when monitor IDs change',
   ],
+  '0.9.74': [
+    'Quiet focus: Alt+Shift+Q / mission-strip toggle — fissures + OCR only (restores modules)',
+    'First-run health gate: Borderless, OCR monitor, EE.log, inventory consent',
+    'List Best pick on warframe.market from relic strip (floor − 1)',
+    'Stale inventory banners on Foundry, Sets, Market, and Relic Recommend',
+    'OCR chip actions: Retry / Dismiss / open Settings',
+  ],
+  '0.9.75': [
+    'Loadout coaching tab: owned gear rank + Forma tips for Steel Path (not live equipped)',
+    'Weekly reset Dashboard card: Sortie, Archon, Nightwave weeklies, Circuit, Baro',
+    'Arbitration haul log: rare inventory gains after extract/sync this session',
+    'Worldstate: Steel Path / Circuit rotation from warframestat when available',
+  ],
 }
 
 export function getWhatsNewBullets(version: string): string[] {

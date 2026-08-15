@@ -13,6 +13,8 @@ type Props = {
   opacity?: number
   compact?: boolean
   onPostLfg?: (relicLabel: string, tier: string) => void
+  onSyncInventory?: () => void
+  onOpenSettings?: () => void
 }
 
 function openFissuresForTier(
@@ -36,7 +38,13 @@ function openFissuresForTier(
     .slice(0, 2)
 }
 
-export function RelicRecommendPanel({ opacity, compact, onPostLfg }: Props) {
+export function RelicRecommendPanel({
+  opacity,
+  compact,
+  onPostLfg,
+  onSyncInventory,
+  onOpenSettings,
+}: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   const { settings } = useSettings()
   const { data } = useWorldstate()
@@ -152,7 +160,12 @@ export function RelicRecommendPanel({ opacity, compact, onPostLfg }: Props) {
         }
       >
         {visible && inventory.loaded ? (
-          <InventoryStaleBanner inventory={inventory} fissureMode />
+          <InventoryStaleBanner
+            inventory={inventory}
+            fissureMode
+            onSyncInventory={onSyncInventory}
+            onOpenInventory={onOpenSettings}
+          />
         ) : null}
         {!visible ? (
           <p className="mod-empty muted" style={{ opacity: 0.6 }}>

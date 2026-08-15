@@ -100,6 +100,8 @@ export type HotkeyConfig = {
   editLayout: string
   /** Hide/restore all persistent worldstate panels (not relics/rivens). */
   toggleWorldstatePanels: string
+  /** Focus mode: only fissures + relic/riven OCR panels. */
+  toggleQuietFocus: string
   toggleModuleCycles: string
   toggleModuleFissures: string
   toggleModuleBaro: string
@@ -507,6 +509,13 @@ export type AppSettings = {
   widgetServerPort: number
   /** After first-run checklist, minimize companion to tray on launch. */
   quietMode: boolean
+  /**
+   * In-mission focus: overlay shows only fissures + relic/riven OCR.
+   * Toggled by hotkey / mission strip; modules restored on exit.
+   */
+  quietFocusActive: boolean
+  /** Module snapshot restored when leaving quiet focus (null when inactive). */
+  quietFocusModulesBackup: Partial<Record<ModuleId, boolean>> | null
   /** Collapse companion sidebar to icon-only. */
   navCollapsed: boolean
   /** Auto-resync inventory while Warframe is running. */
@@ -535,6 +544,10 @@ export type AppSettings = {
     firstMarketListAck: boolean
     /** Linux: finished or skipped the screen-capture wizard. */
     linuxCaptureAck: boolean
+    /** Confirmed OCR / Game monitor selection (or primary). */
+    ocrMonitorAck: boolean
+    /** Confirmed EE.log path is set / detected. */
+    eeLogAck: boolean
   }
 }
 
@@ -689,6 +702,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     dismissRivens: 'Alt+Shift+H',
     editLayout: 'Control+Tab',
     toggleWorldstatePanels: 'Alt+Shift+W',
+    toggleQuietFocus: 'Alt+Shift+Q',
     toggleModuleCycles: '',
     toggleModuleFissures: '',
     toggleModuleBaro: '',
@@ -749,6 +763,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   widgetServerEnabled: false,
   widgetServerPort: 17862,
   quietMode: false,
+  quietFocusActive: false,
+  quietFocusModulesBackup: null,
   navCollapsed: false,
   inventoryAutoSync: true,
   inventoryRemindWhenRunning: true,
@@ -768,6 +784,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     firstInventorySyncAck: false,
     firstMarketListAck: false,
     linuxCaptureAck: false,
+    ocrMonitorAck: false,
+    eeLogAck: false,
   },
 }
 
@@ -909,6 +927,16 @@ export type WorldstateSnapshot = {
   deepArchimedea: DeepArchimedeaInfo | null
   sortie: SortieInfo | null
   alerts: AlertInfo[]
+  /** Steel Path / Circuit weekly offering when warframestat exposes it. */
+  circuit: CircuitInfo | null
+}
+
+export type CircuitInfo = {
+  expiry: string
+  eta: string
+  currentReward: string | null
+  rotation: string[]
+  isActive: boolean
 }
 
 export type InventoryIndex = Record<string, number>
@@ -919,9 +947,67 @@ export type MasteryEntry = {
   xpLevel: number | null
   /** null = unknown (export lacked XP data) */
   mastered: boolean | null
+  /** Applied Forma / polarity slots when export included Polarity[]. */
+  formaCount: number | null
 }
 
 export type MasteryIndex = Record<string, MasteryEntry>
+
+export type LoadoutCategory =
+  | 'warframe'
+  | 'primary'
+  | 'secondary'
+  | 'melee'
+  | 'companion'
+  | 'archwing'
+  | 'other'
+
+export type LoadoutCoachTag = 'unranked' | 'under_forma' | 'forma_ok' | 'sp_ready' | 'unknown_rank'
+
+export type LoadoutItem = {
+  uniqueName: string
+  name: string
+  category: LoadoutCategory
+  owned: number
+  xpLevel: number | null
+  mastered: boolean | null
+  formaCount: number
+  tags: LoadoutCoachTag[]
+  note: string
+}
+
+export type LoadoutSnapshot = {
+  playerLevel: number | null
+  loaded: boolean
+  items: LoadoutItem[]
+  summary: {
+    warframes: number
+    weapons: number
+    unranked: number
+    underForma: number
+    spReady: number
+  }
+}
+
+export type ArbitrationDropHit = {
+  displayName: string
+  uniqueName: string
+  delta: number
+  rare: boolean
+}
+
+export type ArbitrationRunEntry = {
+  id: string
+  at: string
+  source: 'mission_complete' | 'inventory_sync'
+  node: string | null
+  drops: ArbitrationDropHit[]
+}
+
+export type ArbitrationLogSnapshot = {
+  runs: ArbitrationRunEntry[]
+  sessionStartedAt: string
+}
 
 export type FoundryCategory =
   | 'warframe'
@@ -1445,6 +1531,8 @@ export type InventoryStatus = {
   protonPlay: boolean
   error: string | null
   candidates: InventoryCandidate[]
+  /** Account / player mastery rank from inventory export when present. */
+  playerLevel: number | null
 }
 
 export type InventoryBrowseKind = 'part' | 'gear' | 'relic' | 'resource' | 'currency' | 'other'
@@ -1726,6 +1814,10 @@ export type VoidLensApi = {
   refreshWorldstate: () => Promise<WorldstateSnapshot>
   toggleOverlay: () => Promise<boolean>
   setLayoutEditMode: (enabled: boolean) => Promise<AppSettings>
+  /** Raise companion and switch to a tab (e.g. settings, market). */
+  navigateCompanion: (tab: string) => Promise<boolean>
+  /** Toggle fissures + OCR-only quiet focus mode. */
+  toggleQuietFocus: () => Promise<AppSettings>
   pickEeLogPath: () => Promise<string | null>
   pickInventoryPath: () => Promise<string | null>
   detectEeLogPath: () => Promise<string | null>
@@ -1763,6 +1855,9 @@ export type VoidLensApi = {
     limit?: number
   }) => Promise<SetProgressResult>
   getInventoryDiff: () => Promise<InventoryDiff | null>
+  getLoadoutSnapshot: () => Promise<LoadoutSnapshot>
+  getArbitrationLog: () => Promise<ArbitrationLogSnapshot>
+  clearArbitrationLog: () => Promise<ArbitrationLogSnapshot>
   getSessionHaul: () => Promise<SessionHaulSnapshot>
   clearSessionHaul: () => Promise<SessionHaulSnapshot>
   suggestMarketUndercut: (name: string) => Promise<MarketUndercutSuggestion | null>
@@ -1795,6 +1890,7 @@ export type VoidLensApi = {
   getHotkeyStatus: () => Promise<HotkeyRegistration[]>
   onHotkeyStatus: (cb: (status: HotkeyRegistration[]) => void) => () => void
   onDisplayRemount: (cb: (prompt: DisplayRemountPrompt) => void) => () => void
+  onCompanionNavigate: (cb: (tab: string) => void) => () => void
   getAppVersion: () => Promise<string>
   getUpdateStatus: () => Promise<AppUpdateStatus>
   checkForUpdates: () => Promise<AppUpdateStatus>

@@ -16,6 +16,7 @@ export function HotkeySheet({ open, hotkeys, onClose }: Props) {
     { label: 'Open companion', key: hotkeys.openCompanion },
     { label: 'Refresh worldstate', key: hotkeys.refreshWorldstate },
     { label: 'Hide / restore worldstate panels', key: hotkeys.toggleWorldstatePanels },
+    { label: 'Quiet focus (fissures + OCR)', key: hotkeys.toggleQuietFocus },
     { label: 'Scan relic rewards', key: hotkeys.scanRelics },
     { label: 'Dismiss relic popup', key: hotkeys.dismissRelics },
     { label: 'Scan riven compare', key: hotkeys.scanRivens },

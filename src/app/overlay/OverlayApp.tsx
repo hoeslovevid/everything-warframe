@@ -8,6 +8,7 @@ import { useRelicScan } from '../../hooks/useRelicScan'
 import { useRivenScan } from '../../hooks/useRivenScan'
 import { useSettings, useWorldstate } from '../../hooks/useVoidLens'
 import { OverlayMissionStrip } from '../../components/OverlayMissionStrip'
+import { ToastHost } from '../../components/ToastHost'
 import { prettyHotkey } from '../../lib/hotkey'
 import { playScanSound } from '../../lib/sounds'
 import '../../styles/overlay.css'
@@ -16,14 +17,15 @@ export function OverlayApp() {
   const { settings, ready, updateSettings } = useSettings()
   const { data } = useWorldstate()
   const { status: inventory, progress: inventoryProgress, syncFromGame } = useInventory()
-  const { state: relicScan } = useRelicScan()
-  const { state: rivenScan } = useRivenScan()
+  const { state: relicScan, scan: scanRelics, clear: clearRelics } = useRelicScan()
+  const { state: rivenScan, scan: scanRivens, clear: clearRivens } = useRivenScan()
   useColorTheme(settings.colorTheme, settings.customPalette)
   const [anchors, setAnchors] = useState<Partial<Record<ModuleId, PanelAnchor>>>(
     settings.panelAnchors,
   )
   const [ocrRegions, setOcrRegions] = useState<OcrScanRegions>(settings.ocrScanRegions)
   const [toggleCue, setToggleCue] = useState<'on' | 'off' | null>(null)
+  const [ocrMenuOpen, setOcrMenuOpen] = useState(false)
   /** Skip settings→anchors sync while a panel drag/commit is in flight (OCR saves can race). */
   const anchorsLocalRef = useRef(false)
   const [playerDucats, setPlayerDucats] = useState<number | null>(null)
@@ -204,9 +206,56 @@ export function OverlayApp() {
         rivenScanning={rivenScan.scanning}
       />
       {cue}
-      <div className={`ocr-status-chip is-${ocrPhase}`} role="status" aria-live="polite">
-        <span className="ocr-status-chip__dot" aria-hidden />
-        <span>{ocrLabel}</span>
+      <div
+        className={`ocr-status-chip is-${ocrPhase}${ocrMenuOpen ? ' is-open' : ''}`}
+        role="status"
+        aria-live="polite"
+      >
+        <button
+          type="button"
+          className="ocr-status-chip__main"
+          onClick={() => setOcrMenuOpen((v) => !v)}
+          title="OCR actions"
+        >
+          <span className="ocr-status-chip__dot" aria-hidden />
+          <span>{ocrLabel}</span>
+        </button>
+        {ocrMenuOpen ? (
+          <div className="ocr-status-chip__menu">
+            <button
+              type="button"
+              className="ocr-status-chip__action"
+              onClick={() => {
+                setOcrMenuOpen(false)
+                if (rivenScan.active || rivenScan.scanning) void scanRivens()
+                else void scanRelics()
+              }}
+            >
+              Retry
+            </button>
+            <button
+              type="button"
+              className="ocr-status-chip__action"
+              onClick={() => {
+                setOcrMenuOpen(false)
+                if (rivenScan.active || rivenScan.scanning) void clearRivens()
+                else void clearRelics()
+              }}
+            >
+              Dismiss
+            </button>
+            <button
+              type="button"
+              className="ocr-status-chip__action"
+              onClick={() => {
+                setOcrMenuOpen(false)
+                void window.voidlens?.navigateCompanion?.('settings')
+              }}
+            >
+              Settings
+            </button>
+          </div>
+        ) : null}
       </div>
       <OverlayMissionStrip
         settings={settings}
@@ -216,7 +265,11 @@ export function OverlayApp() {
         onSyncInventory={() => {
           void syncFromGame()
         }}
+        onToggleQuietFocus={() => {
+          void window.voidlens?.toggleQuietFocus?.()
+        }}
       />
+      <ToastHost />
     </NowProvider>
   )
 }

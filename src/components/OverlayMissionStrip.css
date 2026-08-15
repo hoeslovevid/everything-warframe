@@ -73,3 +73,8 @@
   opacity: 0.55;
   cursor: default;
 }
+
+.mission-strip__btn--on {
+  border-color: rgba(95, 208, 197, 0.55);
+  background: rgba(58, 168, 160, 0.28);
+}

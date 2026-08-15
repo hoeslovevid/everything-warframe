@@ -2,7 +2,12 @@ import fs from 'node:fs'
 import { EventEmitter } from 'node:events'
 
 export type LogEvent = {
-  type: 'relic_rewards' | 'relic_rewards_end' | 'riven_reroll' | 'riven_reroll_end'
+  type:
+    | 'relic_rewards'
+    | 'relic_rewards_end'
+    | 'riven_reroll'
+    | 'riven_reroll_end'
+    | 'mission_complete'
   /** Approximate squad size when known (relic reward screen). */
   squadSize?: number | null
 }
@@ -60,6 +65,17 @@ const SQUAD_SIZE_LINE =
 const VOID_PROJECTION =
   /AddVoidProjection|VoidProjection|Selecting projection/i
 
+/** End-of-mission markers (Arbitration extract / general EOM). */
+const MISSION_COMPLETE_PATTERNS = [
+  /EndOfMatch\.lua:.*(?:completed|finished|EOM|MissionResults)/i,
+  /MissionComplete|EOM_Complete|OnMatchComplete/i,
+  /Hud\.lua:.*Mission\s+(?:complete|success|extracted)/i,
+]
+
+function lineIsMissionComplete(line: string): boolean {
+  return MISSION_COMPLETE_PATTERNS.some((re) => re.test(line))
+}
+
 function lineIsRewardEnd(line: string): boolean {
   return REWARD_END_PATTERNS.some((re) => re.test(line))
 }
@@ -78,6 +94,7 @@ export class LogWatcher extends EventEmitter {
   private timer: NodeJS.Timeout | null = null
   private lastStartEmit = 0
   private lastEndEmit = 0
+  private lastMissionCompleteEmit = 0
   private lastRivenStart = 0
   private lastRivenEnd = 0
   private rewardScreenOpen = false
@@ -228,6 +245,12 @@ export class LogWatcher extends EventEmitter {
           this.rewardScreenOpen = false
           this.voidProjectionCount = 0
           this.emit('event', { type: 'relic_rewards_end' } satisfies LogEvent)
+        } else if (
+          lineIsMissionComplete(line) &&
+          now - this.lastMissionCompleteEmit >= 8000
+        ) {
+          this.lastMissionCompleteEmit = now
+          this.emit('event', { type: 'mission_complete' } satisfies LogEvent)
         }
       }
 

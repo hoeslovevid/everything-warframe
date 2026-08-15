@@ -18,6 +18,7 @@ const emptyStatus: InventoryStatus = {
   protonPlay: false,
   error: null,
   candidates: [],
+  playerLevel: null,
 }
 
 function api() {

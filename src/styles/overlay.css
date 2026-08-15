@@ -131,9 +131,17 @@
 
 .ocr-status-chip {
   position: fixed;
-  right: 14px;
+  left: 14px;
   bottom: 14px;
   z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.ocr-status-chip__main {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -142,12 +150,18 @@
   border: 1px solid rgba(255, 255, 255, 0.18);
   background: rgba(12, 14, 18, 0.78);
   color: #f2f4f7;
+  font: inherit;
   font-size: 11px;
   font-weight: 650;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  pointer-events: none;
+  cursor: pointer;
   backdrop-filter: blur(8px);
+}
+
+.ocr-status-chip__main:hover,
+.ocr-status-chip.is-open .ocr-status-chip__main {
+  border-color: rgba(201, 164, 92, 0.45);
 }
 
 .ocr-status-chip__dot {
@@ -168,6 +182,31 @@
 
 .ocr-status-chip.is-error .ocr-status-chip__dot {
   background: #d46a6a;
+}
+
+.ocr-status-chip__menu {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(12, 14, 18, 0.88);
+}
+
+.ocr-status-chip__action {
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #f2f4f7;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.ocr-status-chip__action:hover {
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .overlay-panel.is-ocr-dim {

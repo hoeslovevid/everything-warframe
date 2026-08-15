@@ -89,6 +89,8 @@ const MAX_RANK = 30
 
 let cachedIndex: InventoryIndex = {}
 let cachedMastery: MasteryIndex = {}
+let cachedGearCategory: Record<string, import('../../shared/types').LoadoutCategory> = {}
+let cachedPlayerLevel: number | null = null
 let cachedMeta = { path: '', itemCount: 0, uniqueCount: 0 }
 /** Monotonic — Foundry / other UIs refresh when this changes. */
 let inventoryRevision = 0
@@ -299,10 +301,11 @@ function setMastery(
   ownedDelta: number,
   xpLevel: number | null,
   hasXpSignal: boolean,
+  formaCount: number | null = null,
 ) {
   if (!key) return
   const apply = (k: string) => {
-    const prev = mastery[k] || { owned: 0, xpLevel: null, mastered: null }
+    const prev = mastery[k] || { owned: 0, xpLevel: null, mastered: null, formaCount: null }
     const nextOwned = prev.owned + ownedDelta
     let nextLevel = prev.xpLevel
     if (xpLevel != null) {
@@ -314,11 +317,36 @@ function setMastery(
     } else if (hasXpSignal && mastered == null) {
       mastered = false
     }
-    mastery[k] = { owned: nextOwned, xpLevel: nextLevel, mastered }
+    let nextForma = prev.formaCount
+    if (formaCount != null) {
+      nextForma = prev.formaCount == null ? formaCount : Math.max(prev.formaCount, formaCount)
+    }
+    mastery[k] = { owned: nextOwned, xpLevel: nextLevel, mastered, formaCount: nextForma }
   }
   apply(key)
   const base = key.split('/').pop()
   if (base && base !== key) apply(base)
+}
+
+function readFormaCount(row: Record<string, unknown>): number | null {
+  const polar = row.Polarity ?? row.Polarities
+  if (Array.isArray(polar)) return polar.length
+  if (typeof row.FormaCount === 'number' && Number.isFinite(row.FormaCount)) {
+    return Math.max(0, Math.floor(row.FormaCount))
+  }
+  return null
+}
+
+function gearCategoryForInventoryKey(key: string): import('../../shared/types').LoadoutCategory {
+  if (key === 'Suits') return 'warframe'
+  if (key === 'LongGuns') return 'primary'
+  if (key === 'Pistols') return 'secondary'
+  if (key === 'Melee') return 'melee'
+  if (key === 'SpaceSuits' || key === 'SpaceMelee' || key === 'SpaceGuns') return 'archwing'
+  if (key === 'Sentinels' || key === 'SentinelWeapons' || key === 'KubrowPets' || key === 'Cats')
+    return 'companion'
+  if (key === 'MechSuits') return 'other'
+  return 'other'
 }
 
 function readXpLevel(row: Record<string, unknown>): { level: number | null; hasSignal: boolean } {
@@ -343,14 +371,26 @@ function readXpLevel(row: Record<string, unknown>): { level: number | null; hasS
 export function parseInventoryJson(raw: unknown): {
   index: InventoryIndex
   mastery: MasteryIndex
+  gearCategory: Record<string, import('../../shared/types').LoadoutCategory>
+  playerLevel: number | null
   itemCount: number
 } {
   const index: InventoryIndex = {}
   const mastery: MasteryIndex = {}
+  const gearCategory: Record<string, import('../../shared/types').LoadoutCategory> = {}
+  let playerLevel: number | null = null
   let itemCount = 0
-  if (!raw || typeof raw !== 'object') return { index, mastery, itemCount }
+  if (!raw || typeof raw !== 'object') {
+    return { index, mastery, gearCategory, playerLevel, itemCount }
+  }
 
   const root = raw as Record<string, unknown>
+
+  if (typeof root.PlayerLevel === 'number' && Number.isFinite(root.PlayerLevel)) {
+    playerLevel = Math.max(0, Math.floor(root.PlayerLevel))
+  } else if (typeof root.AccountLevel === 'number' && Number.isFinite(root.AccountLevel)) {
+    playerLevel = Math.max(0, Math.floor(root.AccountLevel))
+  }
 
   for (const key of INVENTORY_ARRAY_KEYS) {
     const arr = root[key]
@@ -365,7 +405,12 @@ export function parseInventoryJson(raw: unknown): {
       itemCount += count
       if (GEAR_MASTERY_KEYS.has(key)) {
         const { level, hasSignal } = readXpLevel(row)
-        setMastery(mastery, type, count, level, hasSignal)
+        const forma = readFormaCount(row)
+        setMastery(mastery, type, count, level, hasSignal, forma)
+        const cat = gearCategoryForInventoryKey(key)
+        gearCategory[type] = cat
+        const base = type.split('/').pop()
+        if (base) gearCategory[base] = cat
       }
     }
   }
@@ -410,7 +455,7 @@ export function parseInventoryJson(raw: unknown): {
     return parseInventoryJson(root.Inventory)
   }
 
-  return { index, mastery, itemCount }
+  return { index, mastery, gearCategory, playerLevel, itemCount }
 }
 
 export function decryptAlecaFrameDat(filePath: string): unknown {
@@ -435,12 +480,21 @@ function loadJsonFile(filePath: string): unknown {
 export function loadInventoryFromPath(filePath: string): {
   index: InventoryIndex
   mastery: MasteryIndex
+  gearCategory: Record<string, import('../../shared/types').LoadoutCategory>
+  playerLevel: number | null
   itemCount: number
   uniqueCount: number
 } {
   const raw = loadJsonFile(filePath)
-  const { index, mastery, itemCount } = parseInventoryJson(raw)
-  return { index, mastery, itemCount, uniqueCount: Object.keys(index).length }
+  const { index, mastery, gearCategory, playerLevel, itemCount } = parseInventoryJson(raw)
+  return {
+    index,
+    mastery,
+    gearCategory,
+    playerLevel,
+    itemCount,
+    uniqueCount: Object.keys(index).length,
+  }
 }
 
 export function getInventoryIndex(): InventoryIndex {
@@ -449,6 +503,17 @@ export function getInventoryIndex(): InventoryIndex {
 
 export function getMasteryIndex(): MasteryIndex {
   return { ...cachedMastery }
+}
+
+export function getGearCategoryIndex(): Record<
+  string,
+  import('../../shared/types').LoadoutCategory
+> {
+  return { ...cachedGearCategory }
+}
+
+export function getPlayerLevel(): number | null {
+  return cachedPlayerLevel
 }
 
 /** Live refs for main-process services — do not mutate. */
@@ -1113,6 +1178,8 @@ export function useInventoryFile(
     }
     cachedIndex = loaded.index
     cachedMastery = loaded.mastery
+    cachedGearCategory = loaded.gearCategory
+    cachedPlayerLevel = loaded.playerLevel
     cachedMeta = {
       path: finalPath,
       itemCount: loaded.itemCount,
@@ -1132,6 +1199,14 @@ export function useInventoryFile(
     try {
       void import('./economy-snapshots').then((m) => {
         m.recordEconomySnapshotFromIndex(cachedIndex)
+      })
+    } catch {
+      // ignore
+    }
+
+    try {
+      void import('./arbitration-log').then((m) => {
+        m.noteInventoryDiffForArbitration(lastInventoryDiff)
       })
     } catch {
       // ignore
@@ -1158,6 +1233,8 @@ export function reloadConfiguredInventory(): void {
   if (!settings.inventoryPath || !fs.existsSync(settings.inventoryPath)) {
     cachedIndex = {}
     cachedMastery = {}
+    cachedGearCategory = {}
+    cachedPlayerLevel = null
     cachedMeta = { path: '', itemCount: 0, uniqueCount: 0 }
     return
   }
@@ -1165,6 +1242,8 @@ export function reloadConfiguredInventory(): void {
     const loaded = loadInventoryFromPath(settings.inventoryPath)
     cachedIndex = loaded.index
     cachedMastery = loaded.mastery
+    cachedGearCategory = loaded.gearCategory
+    cachedPlayerLevel = loaded.playerLevel
     cachedMeta = {
       path: settings.inventoryPath,
       itemCount: loaded.itemCount,
@@ -1179,6 +1258,8 @@ export function reloadConfiguredInventory(): void {
 export function clearInventoryData(): InventoryStatus {
   cachedIndex = {}
   cachedMastery = {}
+  cachedGearCategory = {}
+  cachedPlayerLevel = null
   cachedMeta = { path: '', itemCount: 0, uniqueCount: 0 }
   lastInventoryDiff = null
   inventoryRevision += 1
@@ -1238,6 +1319,7 @@ export function getInventoryStatus(): InventoryStatus {
     protonPlay: isProtonPlayAvailable(),
     error: null,
     candidates: detectInventoryCandidates(),
+    playerLevel: cachedPlayerLevel,
   }
 }
 

@@ -4,6 +4,7 @@ import {
   ArbitrationInfo,
   ArchonHuntInfo,
   BaroInfo,
+  CircuitInfo,
   CycleInfo,
   DeepArchimedeaInfo,
   FissureInfo,
@@ -441,6 +442,33 @@ function mapAlerts(
     .slice(0, 8)
 }
 
+function mapCircuit(
+  payload: {
+    expiry?: string
+    activation?: string
+    currentReward?: { name?: string; cost?: number }
+    rotation?: Array<{ name?: string; cost?: number } | string>
+    isActive?: boolean
+    remaining?: string
+    eta?: string
+  } | null,
+): CircuitInfo | null {
+  if (!payload) return null
+  const rotation = (payload.rotation || [])
+    .map((r) => (typeof r === 'string' ? r : r.name || ''))
+    .filter(Boolean)
+  const current =
+    payload.currentReward?.name ||
+    (rotation.length ? rotation[0] : null)
+  return {
+    expiry: payload.expiry || '',
+    eta: payload.eta || payload.remaining || '',
+    currentReward: current,
+    rotation: rotation.slice(0, 8),
+    isActive: payload.isActive !== false,
+  }
+}
+
 export async function fetchWorldstate(): Promise<WorldstateSnapshot> {
   const arbitrationCommunityP = import('./arbitration')
     .then((m) => m.getArbitrationInfo(8))
@@ -463,6 +491,7 @@ export async function fetchWorldstate(): Promise<WorldstateSnapshot> {
     arbCommunity,
     sortieRaw,
     alertsRaw,
+    steelPathRaw,
   ] = await Promise.all([
     getJson<CyclePayload>('/cetusCycle').catch(() => ({}) as CyclePayload),
     getJson<CyclePayload>('/vallisCycle').catch(() => ({}) as CyclePayload),
@@ -577,6 +606,15 @@ export async function fetchWorldstate(): Promise<WorldstateSnapshot> {
         }
       }>
     >('/alerts').catch(() => []),
+    getJson<{
+      expiry?: string
+      activation?: string
+      currentReward?: { name?: string; cost?: number }
+      rotation?: Array<{ name?: string; cost?: number } | string>
+      isActive?: boolean
+      remaining?: string
+      eta?: string
+    } | null>('/steelPath').catch(() => null),
   ])
 
   const cycles: CycleInfo[] = [
@@ -626,6 +664,7 @@ export async function fetchWorldstate(): Promise<WorldstateSnapshot> {
     deepArchimedea: mapDeepArchimedea(archimedeas),
     sortie: mapSortie(sortieRaw),
     alerts: mapAlerts(alertsRaw),
+    circuit: mapCircuit(steelPathRaw),
   }
 }
 
@@ -646,6 +685,7 @@ export function nextWorldstateExpiryMs(data: WorldstateSnapshot, now = Date.now(
   if (data.archonHunt?.expiry) expiries.push(data.archonHunt.expiry)
   if (data.deepArchimedea?.expiry) expiries.push(data.deepArchimedea.expiry)
   if (data.sortie?.expiry) expiries.push(data.sortie.expiry)
+  if (data.circuit?.expiry) expiries.push(data.circuit.expiry)
   for (const a of data.alerts || []) if (a.expiry) expiries.push(a.expiry)
   for (const inv of data.invasions || []) if (inv.expiry) expiries.push(inv.expiry)
 
@@ -676,6 +716,7 @@ export function hasExpiredWorldstate(data: WorldstateSnapshot, now = Date.now())
   if (data.archonHunt?.expiry) expiries.push(data.archonHunt.expiry)
   if (data.deepArchimedea?.expiry) expiries.push(data.deepArchimedea.expiry)
   if (data.sortie?.expiry) expiries.push(data.sortie.expiry)
+  if (data.circuit?.expiry) expiries.push(data.circuit.expiry)
   for (const a of data.alerts || []) if (a.expiry) expiries.push(a.expiry)
   for (const inv of data.invasions || []) if (inv.expiry) expiries.push(inv.expiry)
 

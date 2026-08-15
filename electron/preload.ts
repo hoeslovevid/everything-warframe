@@ -29,6 +29,8 @@ const api: VoidLensApi = {
   refreshWorldstate: () => ipcRenderer.invoke('worldstate:refresh'),
   toggleOverlay: () => ipcRenderer.invoke('overlay:toggle'),
   setLayoutEditMode: (enabled: boolean) => ipcRenderer.invoke('overlay:setLayoutEdit', enabled),
+  navigateCompanion: (tab: string) => ipcRenderer.invoke('companion:navigate', tab),
+  toggleQuietFocus: () => ipcRenderer.invoke('overlay:toggleQuietFocus'),
   pickEeLogPath: () => ipcRenderer.invoke('dialog:pickEeLog'),
   pickInventoryPath: () => ipcRenderer.invoke('dialog:pickInventory'),
   detectEeLogPath: () => ipcRenderer.invoke('log:detectEe'),
@@ -69,6 +71,9 @@ const api: VoidLensApi = {
   getInventoryDiff: () => ipcRenderer.invoke('inventory:diff'),
   getSessionHaul: () => ipcRenderer.invoke('session:haul'),
   clearSessionHaul: () => ipcRenderer.invoke('session:haulClear'),
+  getLoadoutSnapshot: () => ipcRenderer.invoke('loadout:get'),
+  getArbitrationLog: () => ipcRenderer.invoke('arb:log'),
+  clearArbitrationLog: () => ipcRenderer.invoke('arb:logClear'),
   suggestMarketUndercut: (name) => ipcRenderer.invoke('market:undercut', name),
   getMasteryHelper: (query) => ipcRenderer.invoke('mastery:list', query),
   getHotkeyStatus: () => ipcRenderer.invoke('hotkeys:status') as Promise<HotkeyRegistration[]>,
@@ -173,6 +178,11 @@ const api: VoidLensApi = {
     ) => cb(prompt)
     ipcRenderer.on('display:remount', listener)
     return () => ipcRenderer.removeListener('display:remount', listener)
+  },
+  onCompanionNavigate: (cb) => {
+    const listener = (_: Electron.IpcRendererEvent, tab: string) => cb(tab)
+    ipcRenderer.on('companion:navigate', listener)
+    return () => ipcRenderer.removeListener('companion:navigate', listener)
   },
 }
 

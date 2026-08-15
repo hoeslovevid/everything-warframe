@@ -12,6 +12,7 @@ type Props = {
   now?: number
   onSyncInventory?: () => void
   syncProgress?: string | null
+  onToggleQuietFocus?: () => void
 }
 
 /**
@@ -25,6 +26,7 @@ export function OverlayMissionStrip({
   now = Date.now(),
   onSyncInventory,
   syncProgress,
+  onToggleQuietFocus,
 }: Props) {
   const { updateSettings } = useSettings()
   const [lfgOpen, setLfgOpen] = useState<number | null>(null)
@@ -202,14 +204,28 @@ export function OverlayMissionStrip({
     )
   }
 
-  if (!bits.length) return null
+  if (settings.quietFocusActive) {
+    bits.unshift('Quiet')
+  }
+
+  if (!bits.length && !onToggleQuietFocus) return null
 
   return (
     <div className="mission-strip" role="status">
-      <span className="mission-strip__text">{bits.join(' · ')}</span>
+      {bits.length ? <span className="mission-strip__text">{bits.join(' · ')}</span> : null}
       {action?.run ? (
         <button type="button" className="mission-strip__btn" onClick={action.run}>
           {action.label}
+        </button>
+      ) : null}
+      {onToggleQuietFocus ? (
+        <button
+          type="button"
+          className={`mission-strip__btn${settings.quietFocusActive ? ' mission-strip__btn--on' : ''}`}
+          onClick={onToggleQuietFocus}
+          title="Fissures + OCR only"
+        >
+          {settings.quietFocusActive ? 'Quiet on' : 'Quiet'}
         </button>
       ) : null}
     </div>

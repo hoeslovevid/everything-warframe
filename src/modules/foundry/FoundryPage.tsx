@@ -8,6 +8,7 @@ import type {
   FoundryTreeResult,
 } from '../../../shared/types'
 import { EmptyState } from '../../components/EmptyState'
+import { InventoryStaleBanner } from '../../components/InventoryStaleBanner'
 import { ItemThumb } from '../../components/ItemThumb'
 import { Panel } from '../../components/Panel'
 import { SetFarmPanel } from '../../components/SetFarmPanel'
@@ -17,6 +18,7 @@ import './foundry.css'
 type Props = {
   enabled: boolean
   onOpenSettings: () => void
+  onSyncInventory?: () => void
   searchPrefill?: string | null
   onSearchPrefillConsumed?: () => void
 }
@@ -73,6 +75,7 @@ function TreeNodes({ nodes }: { nodes: FoundryTreeNode[] }) {
 export function FoundryPage({
   enabled,
   onOpenSettings,
+  onSyncInventory,
   searchPrefill,
   onSearchPrefillConsumed,
 }: Props) {
@@ -193,6 +196,12 @@ export function FoundryPage({
           then the full crafting tree. Defaults to gear you own plus ready-to-craft.
         </p>
       </header>
+
+      <InventoryStaleBanner
+        inventory={inventory}
+        onOpenInventory={onOpenSettings}
+        onSyncInventory={onSyncInventory}
+      />
 
       {!inventoryReady ? (
         <Panel title="Inventory required" subtitle="Sync once to unlock craft readiness">

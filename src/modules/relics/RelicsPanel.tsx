@@ -6,6 +6,7 @@ import { useRelicScan } from '../../hooks/useRelicScan'
 import { useSettings } from '../../hooks/useVoidLens'
 import { copyText, formatBestPickTradeLine, formatRelicTradeLine } from '../../lib/tradeClipboard'
 import { pushToast } from '../../lib/toast'
+import { listBestPickOnMarket } from '../../lib/listBestPick'
 import '../cycles/module.css'
 import '../baro/baro.css'
 import './relics.css'
@@ -210,6 +211,8 @@ export function RelicsPanel({
   const stripW = stripWidthPx(layoutWidth)
   const [copied, setCopied] = useState(false)
 
+  const [listBusy, setListBusy] = useState(false)
+
   const weakScan = useMemo(() => {
     if (scanning || previewMode || !rewards.length) return false
     const unmatched = rewards.filter((r) => !r.name || r.matchScore < 0.45).length
@@ -226,6 +229,15 @@ export function RelicsPanel({
 
   const openMarket = (name: string) => {
     void window.voidlens?.openExternal?.(marketUrlFor(name))
+  }
+
+  const listBest = async (name: string) => {
+    setListBusy(true)
+    try {
+      await listBestPickOnMarket(name)
+    } finally {
+      setListBusy(false)
+    }
   }
 
   if (compact || previewMode) {
@@ -310,6 +322,15 @@ export function RelicsPanel({
                 >
                   Market
                 </button>
+                <button
+                  type="button"
+                  className="btn ghost"
+                  disabled={listBusy}
+                  onClick={() => void listBest(best.name)}
+                  title="List Best pick on warframe.market at floor − 1"
+                >
+                  {listBusy ? 'Listing…' : 'List'}
+                </button>
                 <button type="button" className="btn ghost" onClick={() => void scan()}>
                   Retry
                 </button>
@@ -355,6 +376,17 @@ export function RelicsPanel({
             title="Copy Best pick only"
           >
             Best pick
+          </button>
+          <button
+            className="btn ghost"
+            disabled={!rewards.find((r) => r.bestPick && r.name) || listBusy}
+            onClick={() => {
+              const best = rewards.find((r) => r.bestPick && r.name)
+              if (best?.name) void listBest(best.name)
+            }}
+            title="List Best pick on warframe.market at floor − 1"
+          >
+            {listBusy ? 'Listing…' : 'List Best'}
           </button>
           <button className="btn ghost" disabled={!rewards.length} onClick={() => void clear()}>
             Clear

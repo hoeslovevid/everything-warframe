@@ -29,6 +29,7 @@ import { buildWineHelperEnv, scrubWineHelperOutput } from '../linux-child-env'
 import { getRecipeByUnique } from './recipe-catalog'
 import { findCatalogItemByName, findCatalogItemByUnique } from './item-catalog'
 import { lookupWfinfoPlatinum } from './wfinfo-prices'
+import { recordInventoryHaul } from './session-haul'
 
 const HELPER_URL =
   'https://github.com/Sainan/warframe-api-helper/releases/download/1.1.2/warframe-api-helper.exe'
@@ -1105,6 +1106,11 @@ export function useInventoryFile(
     const previous = { ...cachedIndex }
     const loaded = loadInventoryFromPath(finalPath)
     lastInventoryDiff = computeInventoryDiff(previous, loaded.index)
+    try {
+      recordInventoryHaul(lastInventoryDiff)
+    } catch {
+      // haul is best-effort
+    }
     cachedIndex = loaded.index
     cachedMastery = loaded.mastery
     cachedMeta = {

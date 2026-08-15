@@ -1,8 +1,28 @@
 import { screen } from 'electron'
-import type { DisplayChoice, PrimaryDisplayInfo } from '../../shared/types'
+import type { DisplayChoice, DisplayRemountPrompt, PrimaryDisplayInfo } from '../../shared/types'
 import { loadSettings, updateSettings } from '../settings'
 
 let warnedStaleDisplayId: number | null = null
+const remountListeners = new Set<(prompt: DisplayRemountPrompt) => void>()
+
+export function onDisplayRemount(cb: (prompt: DisplayRemountPrompt) => void) {
+  remountListeners.add(cb)
+  return () => remountListeners.delete(cb)
+}
+
+function emitDisplayRemount(previousId: number) {
+  const prompt: DisplayRemountPrompt = {
+    previousId,
+    displays: listDisplayChoices(),
+  }
+  for (const cb of remountListeners) {
+    try {
+      cb(prompt)
+    } catch {
+      // ignore listener errors
+    }
+  }
+}
 
 /** Display used for OCR capture and overlay placement. */
 export function resolveOcrDisplay(): Electron.Display {
@@ -20,8 +40,9 @@ export function resolveOcrDisplay(): Electron.Display {
       console.warn(
         `[Everything Warframe] OCR display id ${id} not found among ${displays
           .map((d) => d.id)
-          .join(', ')} — resetting to primary`,
+          .join(', ')} — prompting remount wizard, resetting to primary`,
       )
+      emitDisplayRemount(id)
     }
     try {
       updateSettings({ ocrDisplayId: null })
@@ -55,4 +76,9 @@ export function getOcrDisplayInfo(): PrimaryDisplayInfo {
     scaleFactor: display.scaleFactor,
     isPrimary: display.id === primaryId,
   }
+}
+
+/** Clear the one-shot stale warning so a new remap can prompt again. */
+export function clearDisplayRemountWarning() {
+  warnedStaleDisplayId = null
 }

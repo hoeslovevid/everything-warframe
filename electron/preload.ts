@@ -67,6 +67,8 @@ const api: VoidLensApi = {
   desktopNotify: (payload) => ipcRenderer.invoke('ui:desktopNotify', payload),
   getSetProgress: (opts) => ipcRenderer.invoke('setProgress:list', opts),
   getInventoryDiff: () => ipcRenderer.invoke('inventory:diff'),
+  getSessionHaul: () => ipcRenderer.invoke('session:haul'),
+  clearSessionHaul: () => ipcRenderer.invoke('session:haulClear'),
   suggestMarketUndercut: (name) => ipcRenderer.invoke('market:undercut', name),
   getMasteryHelper: (query) => ipcRenderer.invoke('mastery:list', query),
   getHotkeyStatus: () => ipcRenderer.invoke('hotkeys:status') as Promise<HotkeyRegistration[]>,
@@ -158,6 +160,19 @@ const api: VoidLensApi = {
     const listener = () => cb()
     ipcRenderer.on('rivens:sound', listener)
     return () => ipcRenderer.removeListener('rivens:sound', listener)
+  },
+  onHotkeyStatus: (cb) => {
+    const listener = (_: Electron.IpcRendererEvent, status: HotkeyRegistration[]) => cb(status)
+    ipcRenderer.on('hotkeys:status', listener)
+    return () => ipcRenderer.removeListener('hotkeys:status', listener)
+  },
+  onDisplayRemount: (cb) => {
+    const listener = (
+      _: Electron.IpcRendererEvent,
+      prompt: { previousId: number; displays: DisplayChoice[] },
+    ) => cb(prompt)
+    ipcRenderer.on('display:remount', listener)
+    return () => ipcRenderer.removeListener('display:remount', listener)
   },
 }
 

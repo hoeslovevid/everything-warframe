@@ -85,6 +85,14 @@
   color: var(--vl-ok);
 }
 
+.mod-row__value.is-ok {
+  color: var(--vl-ok);
+}
+
+.mod-row__value.is-bad {
+  color: var(--vl-danger);
+}
+
 .mod-bullets {
   margin: 0;
   padding-left: 18px;

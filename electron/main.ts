@@ -21,7 +21,9 @@ import { loadSettings, setModuleEnabled, updateSettings } from './settings'
 import {
   getOcrDisplayInfo,
   listDisplayChoices,
+  onDisplayRemount,
   resolveOcrDisplay,
+  clearDisplayRemountWarning,
 } from './services/display-target'
 import {
   invalidateCaptureCache,
@@ -55,6 +57,7 @@ import {
   isInventorySyncInFlight,
   useInventoryFile,
 } from './services/inventory'
+import { clearSessionHaul, getSessionHaul } from './services/session-haul'
 import { LogWatcher } from './services/log-watcher'
 import {
   ackRelicCelebration,
@@ -353,6 +356,21 @@ function broadcastInventory() {
   const status = getInventoryStatus()
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send('inventory:updated', status)
+  }
+}
+
+function broadcastHotkeyStatus() {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send('hotkeys:status', lastHotkeyStatus)
+  }
+}
+
+function broadcastDisplayRemount(prompt: {
+  previousId: number
+  displays: ReturnType<typeof listDisplayChoices>
+}) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send('display:remount', prompt)
   }
 }
 
@@ -1069,6 +1087,7 @@ function registerHotkeys() {
   }
 
   lastHotkeyStatus = status
+  broadcastHotkeyStatus()
 
   if (changed) {
     const next = updateSettings({ hotkeys: nextHotkeys })
@@ -1160,6 +1179,7 @@ function registerIpc() {
       })
     }
     if (partial.ocrDisplayId !== undefined) {
+      clearDisplayRemountWarning()
       invalidateCaptureCache()
       if (overlayWindow && !overlayWindow.isDestroyed()) {
         restoreOverlayGeometry(overlayWindow)
@@ -1306,6 +1326,8 @@ function registerIpc() {
   })
   ipcMain.handle('inventory:index', () => getInventoryIndex())
   ipcMain.handle('inventory:diff', () => getInventoryDiff())
+  ipcMain.handle('session:haul', () => getSessionHaul())
+  ipcMain.handle('session:haulClear', () => clearSessionHaul())
   ipcMain.handle('inventory:browse', async (_e, query) => {
     const sellableOnly = Boolean(query?.sellableOnly)
     const enrichPrices = sellableOnly || Boolean(query?.enrichPrices)
@@ -1598,6 +1620,10 @@ app.whenReady().then(async () => {
   raiseCompanion()
 
   reloadConfiguredInventory()
+  onDisplayRemount((prompt) => {
+    broadcastDisplayRemount(prompt)
+    raiseCompanion()
+  })
   onInventoryUpdated((status) => {
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send('inventory:updated', status)

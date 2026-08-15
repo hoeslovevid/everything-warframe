@@ -17,6 +17,8 @@ import './foundry.css'
 type Props = {
   enabled: boolean
   onOpenSettings: () => void
+  searchPrefill?: string | null
+  onSearchPrefillConsumed?: () => void
 }
 
 const CATEGORIES: Array<{ id: FoundryCategory | 'all'; label: string }> = [
@@ -68,9 +70,20 @@ function TreeNodes({ nodes }: { nodes: FoundryTreeNode[] }) {
   )
 }
 
-export function FoundryPage({ enabled, onOpenSettings }: Props) {
+export function FoundryPage({
+  enabled,
+  onOpenSettings,
+  searchPrefill,
+  onSearchPrefillConsumed,
+}: Props) {
   const { status: inventory } = useInventory()
   const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    if (!searchPrefill?.trim()) return
+    setSearch(searchPrefill.trim())
+    onSearchPrefillConsumed?.()
+  }, [searchPrefill, onSearchPrefillConsumed])
   const [category, setCategory] = useState<FoundryCategory | 'all'>('all')
   const [prime, setPrime] = useState<FoundryListFilters['prime']>('any')
   const [scope, setScope] = useState<FoundryScopeFilter>('inventory')

@@ -11,6 +11,12 @@ import { captureRewardRegionVariants, cropRelicBandsFromPng } from './screen-cap
 import { detectRewardPlayerCount, detectUiTheme, type WfThemeId } from './wfinfo-theme'
 import { ensureWfinfoPrices, lookupWfinfoPrices } from './wfinfo-prices'
 import { loadSettings } from '../settings'
+import { recordRelicHaul } from './session-haul'
+import { WF_THEME_IDS } from './wfinfo-theme'
+
+/** Last confident theme/slots — skip re-detect on the next scan when overrides are Auto. */
+let lastConfidentTheme: WfThemeId | null = null
+let lastConfidentSlots: 3 | 4 | null = null
 
 function cleanRelicOcr(ocrText: string): string {
   return ocrText
@@ -310,16 +316,19 @@ export async function scanRelicRewards(
         )
       }
 
-      // WFInfo-style: theme override or auto-detect, then isolate text.
+      // WFInfo-style: theme override → last confident → auto-detect.
       const settings = loadSettings()
       const theme: WfThemeId =
-        settings.wfThemeOverride ?? detectUiTheme(capture.fullPng)
+        settings.wfThemeOverride ??
+        lastConfidentTheme ??
+        detectUiTheme(capture.fullPng)
       console.info(`[Everything Warframe] Relic UI theme ≈ ${theme}`)
 
-      // Squad size: settings override → EE.log hint → image cosine detect.
+      // Squad size: settings override → EE.log → last confident → image detect.
       let slotHint =
         settings.relicSquadSizeOverride ??
         squadSize ??
+        lastConfidentSlots ??
         detectRewardPlayerCount(capture.fullPng, theme)
       if (slotHint !== 3 && slotHint !== 4) slotHint = 4
       console.info(`[Everything Warframe] Relic slot count hint ≈ ${slotHint}`)
@@ -460,6 +469,27 @@ export async function scanRelicRewards(
     }
 
     rewards = pickBest(rewards)
+
+    try {
+      recordRelicHaul(rewards)
+    } catch {
+      // haul is best-effort
+    }
+
+    // Remember confident theme + slot count so the next Auto scan skips re-detect.
+    const strong = rewards.filter((r) => r.matchScore >= 0.55)
+    if (strong.length >= Math.ceil(rewards.length / 2) && lastMeta?.theme) {
+      if ((WF_THEME_IDS as string[]).includes(lastMeta.theme)) {
+        lastConfidentTheme = lastMeta.theme as WfThemeId
+      }
+      const slots =
+        lastMeta.trimmedTo === 3 || lastMeta.slotHint === 3
+          ? 3
+          : lastMeta.trimmedTo === 4 || lastMeta.slotHint === 4
+            ? 4
+            : null
+      if (slots) lastConfidentSlots = slots
+    }
 
     state = {
       active: true,

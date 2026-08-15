@@ -29,6 +29,8 @@ type Props = {
   onUpdate: (partial: Partial<AppSettings>) => void
   onOpenHelp?: () => void
   onFirstListCelebration?: () => void
+  focusItem?: string | null
+  onFocusItemConsumed?: () => void
 }
 
 type MarketTab =
@@ -80,7 +82,15 @@ function contractKindLabel(kind: WfmContract['kind']) {
   return 'Auction'
 }
 
-export function MarketPage({ settings, enabled, onUpdate, onOpenHelp, onFirstListCelebration }: Props) {
+export function MarketPage({
+  settings,
+  enabled,
+  onUpdate,
+  onOpenHelp,
+  onFirstListCelebration,
+  focusItem,
+  onFocusItemConsumed,
+}: Props) {
   const [tab, setTab] = useState<MarketTab>('watchlist')
   const [draft, setDraft] = useState('')
   const [quotes, setQuotes] = useState<MarketQuote[]>([])
@@ -362,6 +372,19 @@ export function MarketPage({ settings, enabled, onUpdate, onOpenHelp, onFirstLis
   const removeItem = (name: string) => {
     onUpdate({ marketWatchlist: watchlist.filter((w) => w !== name) })
   }
+
+  useEffect(() => {
+    const name = focusItem?.trim()
+    if (!name) return
+    setTab('watchlist')
+    const wl = settings.marketWatchlist
+    if (!wl.some((w) => w.toLowerCase() === name.toLowerCase())) {
+      onUpdate({ marketWatchlist: [...wl, name] })
+    }
+    onFocusItemConsumed?.()
+    // Only react to new focus payloads
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusItem])
 
   const linkJwt = async () => {
     setAuthBusy(true)

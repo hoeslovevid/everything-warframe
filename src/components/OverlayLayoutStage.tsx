@@ -66,6 +66,9 @@ export type OverlayLayoutStageProps = {
   onAnchorsCommit: (next: Partial<Record<ModuleId, PanelAnchor>>) => void
   /** Fired once a drag actually moved a panel (used to dismiss the teaching chip). */
   onPanelMoved?: () => void
+  /** Dim worldstate panels while relic/riven OCR is running. */
+  relicScanning?: boolean
+  rivenScanning?: boolean
 }
 
 function clamp(n: number, min: number, max: number) {
@@ -133,6 +136,8 @@ export function OverlayLayoutStage({
   onAnchorsChange,
   onAnchorsCommit,
   onPanelMoved,
+  relicScanning = false,
+  rivenScanning = false,
 }: OverlayLayoutStageProps) {
   const stageRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<DragSession | null>(null)
@@ -435,16 +440,19 @@ export function OverlayLayoutStage({
 
       {modules.map((id) => {
         const anchor = anchors[id] || { x: 24, y: 24 }
+        const ocrBusy = relicScanning || rivenScanning
+        const isOcrPanel = id === 'relics' || id === 'rivens'
+        const dimmed = ocrBusy && !isOcrPanel && !editable
         return (
           <div
             key={id}
             className={`overlay-panel ${editable ? 'is-draggable' : ''} ${
               dragging === id ? 'is-dragging' : ''
-            }`}
+            } ${dimmed ? 'is-ocr-dim' : ''}`}
             style={{
               left: anchor.x,
               top: anchor.y,
-              zIndex: dragging === id ? 20 : 1,
+              zIndex: dragging === id ? 20 : isOcrPanel && ocrBusy ? 15 : 1,
               transform: overlayScale !== 1 ? `scale(${overlayScale})` : undefined,
               transformOrigin: 'top left',
             }}

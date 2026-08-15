@@ -39,6 +39,39 @@
   color: #f0c0c0;
 }
 
+.companion-remount {
+  position: fixed;
+  inset: 0;
+  z-index: 140;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--vl-void-950) 72%, transparent);
+}
+
+.companion-remount__card {
+  width: min(480px, 100%);
+  padding: 18px 20px;
+  border-radius: var(--vl-radius);
+  border: 1px solid var(--vl-panel-border);
+  background: var(--vl-panel-solid);
+  box-shadow: var(--vl-elev-2);
+}
+
+.companion-remount__title {
+  margin: 0 0 8px;
+  font-family: var(--vl-font-display);
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+}
+
+.companion-remount__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
 .companion-root::before {
   content: '';
   position: fixed;

@@ -3,6 +3,7 @@ import {
   AppSettings,
   FissureInfo,
   LfgListing,
+  SessionHaulSnapshot,
   SetProgressRow,
   WorldstateSnapshot,
 } from '../../shared/types'
@@ -46,6 +47,26 @@ export function TodaySummary({
   const done = new Set(settings.nightwaveDoneIds || [])
   const [nearDoneSets, setNearDoneSets] = useState<SetProgressRow[]>([])
   const [lfgOwnedOpen, setLfgOwnedOpen] = useState(0)
+  const [haul, setHaul] = useState<SessionHaulSnapshot | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    const tick = async () => {
+      if (!window.voidlens?.getSessionHaul) return
+      try {
+        const next = await window.voidlens.getSessionHaul()
+        if (!cancelled) setHaul(next)
+      } catch {
+        if (!cancelled) setHaul(null)
+      }
+    }
+    void tick()
+    const id = window.setInterval(() => void tick(), 45_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -384,6 +405,54 @@ export function TodaySummary({
                 </li>
               ))}
             </ul>
+          </div>
+        ) : null}
+
+        {haul && (haul.relicScans > 0 || haul.inventoryAdded.length > 0 || haul.inventoryChanged.length > 0) ? (
+          <div className="today-haul">
+            <div className="today-haul__head">
+              <div>
+                <div className="today-cell__label">Tonight’s haul</div>
+                <p className="today-brief__meta" style={{ marginTop: 4 }}>
+                  {haul.relicScans} relic scan{haul.relicScans === 1 ? '' : 's'}
+                  {haul.neededParts ? ` · ${haul.neededParts} needed` : ''}
+                  {haul.platEstimate > 0 ? ` · ~${Math.round(haul.platEstimate)}p seen` : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={() => {
+                  void window.voidlens?.clearSessionHaul?.().then((next) => setHaul(next))
+                }}
+              >
+                Clear
+              </button>
+            </div>
+            {haul.relicHits.length ? (
+              <ul className="today-haul__list">
+                {haul.relicHits.slice(0, 6).map((h, i) => (
+                  <li key={`${h.at}-${h.name}-${i}`}>
+                    <span className={h.needed ? 'is-needed' : undefined}>
+                      {h.name}
+                      {h.needed ? ' · needed' : ''}
+                    </span>
+                    <span className="today-fissure-list__eta">
+                      {h.platinum != null ? `~${h.platinum}p` : h.setName || '—'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {haul.inventoryAdded.length || haul.inventoryChanged.length ? (
+              <p className="today-brief__meta" style={{ marginTop: 8 }}>
+                Inventory:{' '}
+                {[...haul.inventoryAdded, ...haul.inventoryChanged]
+                  .slice(0, 4)
+                  .map((e) => `+${e.delta} ${e.displayName}`)
+                  .join(', ')}
+              </p>
+            ) : null}
           </div>
         ) : null}
       </div>

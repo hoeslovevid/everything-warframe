@@ -316,6 +316,14 @@ export const WHATS_NEW: Record<string, string[]> = {
     'Riven scan perf: shorter settle/retry, warm capture stream in parallel, skip off-screen park hitch',
     'Cap desktopCapturer thumbs at 1440p; warm relic + riven OCR together at startup',
   ],
+  '0.9.73': [
+    'OCR status chip on overlay (idle / reading / done) + dim worldstate panels while scanning',
+    'Tonight’s haul on Dashboard: relic hits, needed parts, plat seen, inventory gains',
+    'Relic rewards deep-link to Sets / Foundry / Market / LFG',
+    'Inventory sync toast shows item deltas (+2 Forma…)',
+    'Remember last confident OCR theme + slot count for faster Auto scans',
+    'Hotkey conflict warning in Settings; display remount wizard when monitor IDs change',
+  ],
 }
 
 export function getWhatsNewBullets(version: string): string[] {

@@ -10,6 +10,8 @@ import '../cycles/module.css'
 import '../baro/baro.css'
 import './relics.css'
 
+type DeepLinkTarget = 'sets' | 'foundry' | 'market' | 'lfg'
+
 type Props = {
   opacity?: number
   compact?: boolean
@@ -18,6 +20,7 @@ type Props = {
   scanHotkey?: string
   dismissHotkey?: string
   layoutWidth?: number
+  onDeepLink?: (target: DeepLinkTarget, query: string) => void
 }
 
 function stripWidthPx(layoutWidth?: number) {
@@ -64,10 +67,12 @@ function RewardCard({
   reward,
   compact,
   onOpenMarket,
+  onDeepLink,
 }: {
   reward: RewardEval
   compact?: boolean
   onOpenMarket?: (name: string) => void
+  onDeepLink?: (target: DeepLinkTarget, query: string) => void
 }) {
   const needed = reward.needed
   const lowConf = reward.matchScore > 0 && reward.matchScore < 0.55
@@ -77,6 +82,7 @@ function RewardCard({
     if (reward.volume != null) priceBits.push(`${reward.volume} sells`)
   }
   if (reward.ducats != null) priceBits.push(`${reward.ducats}d`)
+  const linkQuery = reward.setName || reward.name
   return (
     <li
       className={`relic-card ${needed ? 'is-needed' : ''} ${reward.bestPick ? 'is-best' : ''} ${
@@ -110,16 +116,47 @@ function RewardCard({
           Set parts owned {reward.setOwnedParts}/{reward.setTotalParts}
         </div>
       ) : null}
-      {!compact && reward.bestPick && reward.name ? (
+      {!compact && reward.name ? (
         <div className="relic-card__actions">
+          {reward.setName ? (
+            <button
+              type="button"
+              className="btn ghost"
+              style={{ fontSize: '0.7rem', padding: '2px 8px' }}
+              onClick={() => onDeepLink?.('sets', reward.setName!)}
+            >
+              Sets
+            </button>
+          ) : null}
           <button
             type="button"
             className="btn ghost"
             style={{ fontSize: '0.7rem', padding: '2px 8px' }}
-            onClick={() => onOpenMarket?.(reward.name)}
+            onClick={() => onDeepLink?.('foundry', linkQuery)}
+          >
+            Foundry
+          </button>
+          <button
+            type="button"
+            className="btn ghost"
+            style={{ fontSize: '0.7rem', padding: '2px 8px' }}
+            onClick={() => {
+              if (onDeepLink) onDeepLink('market', reward.name)
+              else onOpenMarket?.(reward.name)
+            }}
           >
             Market
           </button>
+          {linkQuery ? (
+            <button
+              type="button"
+              className="btn ghost"
+              style={{ fontSize: '0.7rem', padding: '2px 8px' }}
+              onClick={() => onDeepLink?.('lfg', linkQuery)}
+            >
+              LFG
+            </button>
+          ) : null}
         </div>
       ) : null}
     </li>
@@ -130,10 +167,12 @@ function RewardRow({
   rewards,
   compact,
   onOpenMarket,
+  onDeepLink,
 }: {
   rewards: RewardEval[]
   compact?: boolean
   onOpenMarket?: (name: string) => void
+  onDeepLink?: (target: DeepLinkTarget, query: string) => void
 }) {
   const cols = Math.min(4, Math.max(1, rewards.length))
   return (
@@ -147,6 +186,7 @@ function RewardRow({
           reward={reward}
           compact={compact}
           onOpenMarket={onOpenMarket}
+          onDeepLink={onDeepLink}
         />
       ))}
     </ul>
@@ -161,6 +201,7 @@ export function RelicsPanel({
   scanHotkey = 'Alt+Shift+F',
   dismissHotkey = 'Alt+Shift+D',
   layoutWidth,
+  onDeepLink,
 }: Props) {
   const { state, scan, clear } = useRelicScan()
   const { settings, updateSettings } = useSettings()
@@ -409,7 +450,7 @@ export function RelicsPanel({
             </button>
           </div>
         ) : (
-          <RewardRow rewards={rewards} onOpenMarket={openMarket} />
+          <RewardRow rewards={rewards} onOpenMarket={openMarket} onDeepLink={onDeepLink} />
         )}
       </div>
     </Panel>

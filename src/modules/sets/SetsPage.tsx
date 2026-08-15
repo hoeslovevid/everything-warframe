@@ -11,6 +11,8 @@ type Props = {
   enabled: boolean
   onOpenSettings: () => void
   onOpenFoundry?: (uniqueName: string) => void
+  searchPrefill?: string | null
+  onSearchPrefillConsumed?: () => void
 }
 
 type CompletionFilter = 'incomplete' | 'complete' | 'all'
@@ -26,11 +28,23 @@ function normalizeFavorite(s: string): string {
     .trim()
 }
 
-export function SetsPage({ enabled, onOpenSettings, onOpenFoundry }: Props) {
+export function SetsPage({
+  enabled,
+  onOpenSettings,
+  onOpenFoundry,
+  searchPrefill,
+  onSearchPrefillConsumed,
+}: Props) {
   const { status: inventory } = useInventory()
   const { settings, updateSettings } = useSettings()
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+
+  useEffect(() => {
+    if (!searchPrefill?.trim()) return
+    setSearch(searchPrefill.trim())
+    onSearchPrefillConsumed?.()
+  }, [searchPrefill, onSearchPrefillConsumed])
   const [completion, setCompletion] = useState<CompletionFilter>('incomplete')
   const [rows, setRows] = useState<SetProgressRow[]>([])
   const [loading, setLoading] = useState(false)

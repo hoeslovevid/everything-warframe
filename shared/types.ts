@@ -1509,6 +1509,32 @@ export type InventorySyncResult = {
   diff?: InventoryDiff | null
 }
 
+/** In-memory “tonight’s haul” for the current app session. */
+export type SessionHaulRelicHit = {
+  at: string
+  name: string
+  needed: boolean
+  platinum: number | null
+  setName: string | null
+}
+
+export type SessionHaulSnapshot = {
+  startedAt: string
+  relicScans: number
+  relicHits: SessionHaulRelicHit[]
+  neededParts: number
+  platEstimate: number
+  inventoryAdded: InventoryDiffEntry[]
+  inventoryChanged: InventoryDiffEntry[]
+  lastSyncAt: string | null
+}
+
+/** Fired when a saved OCR display id is gone (Windows remount / driver remap). */
+export type DisplayRemountPrompt = {
+  previousId: number
+  displays: DisplayChoice[]
+}
+
 export type SetProgressPart = {
   name: string
   uniqueName: string
@@ -1737,6 +1763,8 @@ export type VoidLensApi = {
     limit?: number
   }) => Promise<SetProgressResult>
   getInventoryDiff: () => Promise<InventoryDiff | null>
+  getSessionHaul: () => Promise<SessionHaulSnapshot>
+  clearSessionHaul: () => Promise<SessionHaulSnapshot>
   suggestMarketUndercut: (name: string) => Promise<MarketUndercutSuggestion | null>
   getEconomyTrend: () => Promise<EconomyTrendResult>
   lfgHealth: () => Promise<{ ok: boolean; listings?: number; error?: string; baseUrl: string }>
@@ -1765,6 +1793,8 @@ export type VoidLensApi = {
   desktopNotify: (payload: { title: string; body?: string }) => Promise<boolean>
   getMasteryHelper: (query?: MasteryHelperQuery) => Promise<MasteryHelperResult>
   getHotkeyStatus: () => Promise<HotkeyRegistration[]>
+  onHotkeyStatus: (cb: (status: HotkeyRegistration[]) => void) => () => void
+  onDisplayRemount: (cb: (prompt: DisplayRemountPrompt) => void) => () => void
   getAppVersion: () => Promise<string>
   getUpdateStatus: () => Promise<AppUpdateStatus>
   checkForUpdates: () => Promise<AppUpdateStatus>

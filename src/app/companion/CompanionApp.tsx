@@ -4,6 +4,7 @@ import {
   ColorThemeId,
   CustomPalette,
   DisplayChoice,
+  DisplayRemountPrompt,
   HotkeyRegistration,
   MODULE_META,
   ModuleId,
@@ -164,6 +165,10 @@ export function CompanionApp() {
   const [suggestDismissed, setSuggestDismissed] = useState<string | null>(null)
   const [showLinuxWizard, setShowLinuxWizard] = useState(false)
   const [lfgPrefill, setLfgPrefill] = useState<LfgPrefill | null>(null)
+  const [setsSearchPrefill, setSetsSearchPrefill] = useState<string | null>(null)
+  const [foundrySearchPrefill, setFoundrySearchPrefill] = useState<string | null>(null)
+  const [marketFocusItem, setMarketFocusItem] = useState<string | null>(null)
+  const [displayRemount, setDisplayRemount] = useState<DisplayRemountPrompt | null>(null)
   const { settings, ready, updateSettings, setModuleEnabled } = useSettings()
   const { data, loading, error, refresh } = useWorldstate()
   const { status: inventory, progress: inventoryProgress } = useInventory()
@@ -247,14 +252,50 @@ export function CompanionApp() {
     pushToast('Syncing inventory…', 'info', 2500)
     const res = await window.voidlens.syncInventoryFromGame()
     if (res.ok) {
-      pushToast('Inventory synced', 'ok')
+      const gains = [
+        ...(res.diff?.added || []),
+        ...(res.diff?.changed || []).filter((c) => c.delta > 0),
+      ]
+        .slice(0, 3)
+        .map((e) => `+${e.delta} ${e.displayName}`)
+      pushToast(gains.length ? `Synced · ${gains.join(', ')}` : 'Inventory synced', 'ok', 6500)
       if (!settings.onboarding.inventoryTouched) {
         patchOnboarding({ inventoryTouched: true })
       }
     } else {
       pushToast(res.error || 'Inventory sync failed', 'error', 7000)
     }
-  }, [settings.onboarding.firstInventorySyncAck, patchOnboarding])
+  }, [settings.onboarding.inventoryTouched, patchOnboarding])
+
+  const handleRelicDeepLink = useCallback(
+    (target: 'sets' | 'foundry' | 'market' | 'lfg', query: string) => {
+      const q = query.trim()
+      if (!q) return
+      if (target === 'sets') {
+        setSetsSearchPrefill(q)
+        goTab('sets')
+        pushToast(`Sets · “${q}”`, 'info', 3500)
+      } else if (target === 'foundry') {
+        setFoundrySearchPrefill(q)
+        goTab('foundry')
+        pushToast(`Foundry · “${q}”`, 'info', 3500)
+      } else if (target === 'market') {
+        setMarketFocusItem(q)
+        goTab('market')
+        pushToast(`Market watchlist · “${q}”`, 'ok', 3500)
+      } else {
+        setLfgPrefill({
+          relicKey: q,
+          title: `${q} radshare`,
+          shareType: 'radshare',
+          activity: 'relic',
+        })
+        goTab('lfg')
+        pushToast(`LFG form ready for “${q}”`, 'ok', 4500)
+      }
+    },
+    [goTab],
+  )
 
   const profileSuggest = useMemo(() => {
     const hit = suggestPlayProfile({
@@ -415,7 +456,9 @@ export function CompanionApp() {
       setHotkeyStatus(await window.voidlens.getHotkeyStatus())
     }
     void boot()
-  }, [])
+    const unsub = window.voidlens?.onHotkeyStatus?.((status) => setHotkeyStatus(status))
+    return () => unsub?.()
+  }, [settings.hotkeys])
 
   useEffect(() => {
     const boot = async () => {
@@ -424,6 +467,16 @@ export function CompanionApp() {
     }
     void boot()
   }, [])
+
+  useEffect(() => {
+    if (!window.voidlens?.onDisplayRemount) return
+    return window.voidlens.onDisplayRemount((prompt) => {
+      setDisplays(prompt.displays)
+      setDisplayRemount(prompt)
+      pushToast('OCR monitor remapped — pick Warframe’s screen', 'warn', 8000)
+      goTab('settings')
+    })
+  }, [goTab])
 
   useEffect(() => {
     if (!ready) return
@@ -477,6 +530,50 @@ export function CompanionApp() {
             role="status"
           >
             Overlay {overlayCue === 'on' ? 'ON' : 'OFF'}
+          </div>
+        ) : null}
+        {displayRemount && tab !== 'settings' ? (
+          <div className="companion-remount" role="dialog" aria-modal="true">
+            <div className="companion-remount__card">
+              <h2 className="companion-remount__title">Which screen is Warframe on?</h2>
+              <p className="muted">
+                Your saved OCR monitor (id {displayRemount.previousId}) disappeared after a display
+                remount. Pick the screen that shows the game.
+              </p>
+              <div className="companion-remount__actions">
+                <button
+                  type="button"
+                  className="btn ghost"
+                  onClick={() => {
+                    void updateSettings({ ocrDisplayId: null }).then(() => {
+                      setDisplayRemount(null)
+                      pushToast('OCR monitor set to primary', 'ok')
+                    })
+                  }}
+                >
+                  Use primary
+                </button>
+                {(displayRemount.displays.length ? displayRemount.displays : displays).map((d) => (
+                  <button
+                    key={d.id}
+                    type="button"
+                    className="btn primary"
+                    onClick={() => {
+                      void updateSettings({ ocrDisplayId: d.id }).then(() => {
+                        setDisplayRemount(null)
+                        pushToast(`OCR monitor → ${d.label}`, 'ok')
+                      })
+                    }}
+                  >
+                    {d.label}
+                    {d.isPrimary ? ' · primary' : ''}
+                  </button>
+                ))}
+                <button type="button" className="btn ghost" onClick={() => goTab('settings')}>
+                  Open Settings
+                </button>
+              </div>
+            </div>
           </div>
         ) : null}
         <div className={`companion-shell${settings.navCollapsed ? ' is-nav-collapsed' : ''}`}>
@@ -886,6 +983,7 @@ export function CompanionApp() {
                     <RelicsPanel
                       scanHotkey={prettyHotkey(settings.hotkeys.scanRelics)}
                       dismissHotkey={prettyHotkey(settings.hotkeys.dismissRelics)}
+                      onDeepLink={handleRelicDeepLink}
                     />
                   ) : null}
                   {enabledIds.includes('rivens') ? (
@@ -1040,6 +1138,8 @@ export function CompanionApp() {
               <FoundryPage
                 enabled={settings.modules.foundry}
                 onOpenSettings={() => goTab('settings')}
+                searchPrefill={foundrySearchPrefill}
+                onSearchPrefillConsumed={() => setFoundrySearchPrefill(null)}
               />
             ) : null}
 
@@ -1048,6 +1148,8 @@ export function CompanionApp() {
                 enabled
                 onOpenSettings={() => goTab('settings')}
                 onOpenFoundry={() => goTab('foundry')}
+                searchPrefill={setsSearchPrefill}
+                onSearchPrefillConsumed={() => setSetsSearchPrefill(null)}
               />
             ) : null}
 
@@ -1091,6 +1193,8 @@ export function CompanionApp() {
                     pushToast('First market listing — track it in the Log tab.', 'ok', 6000)
                   }
                 }}
+                focusItem={marketFocusItem}
+                onFocusItemConsumed={() => setMarketFocusItem(null)}
               />
             ) : null}
 
@@ -1412,6 +1516,47 @@ export function CompanionApp() {
                         : ''}
                       . On Linux, choose that same screen in the screen-share dialog.
                     </p>
+                    {displayRemount ? (
+                      <div className="getting-started" style={{ marginTop: 12, padding: '12px 14px' }}>
+                        <p className="getting-started__sub" style={{ margin: '0 0 8px' }}>
+                          Monitor IDs remapped (was display {displayRemount.previousId}). Which
+                          screen is Warframe on?
+                        </p>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          <button
+                            type="button"
+                            className="btn ghost"
+                            onClick={() => {
+                              void updateSettings({ ocrDisplayId: null }).then(() => {
+                                setDisplayRemount(null)
+                                pushToast('OCR monitor set to primary', 'ok')
+                              })
+                            }}
+                          >
+                            Primary
+                          </button>
+                          {(displayRemount.displays.length
+                            ? displayRemount.displays
+                            : displays
+                          ).map((d) => (
+                            <button
+                              key={d.id}
+                              type="button"
+                              className="btn primary"
+                              onClick={() => {
+                                void updateSettings({ ocrDisplayId: d.id }).then(() => {
+                                  setDisplayRemount(null)
+                                  pushToast(`OCR monitor → ${d.label}`, 'ok')
+                                })
+                              }}
+                            >
+                              {d.label}
+                              {d.isPrimary ? ' · primary' : ''} ({d.width}×{d.height})
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                   <div className="field">
                     <label htmlFor="wf-theme">Relic UI theme (OCR)</label>
@@ -1659,6 +1804,16 @@ export function CompanionApp() {
                   </Panel>
 
                   <Panel title="Hotkeys">
+                    {hotkeyStatus.filter((hk) => hk.requested?.trim() && !hk.ok).length > 0 ? (
+                      <p className="market-buy-hit" role="alert" style={{ marginBottom: 12 }}>
+                        Some hotkeys failed to register (often taken by another app):{' '}
+                        {hotkeyStatus
+                          .filter((hk) => hk.requested?.trim() && !hk.ok)
+                          .map((hk) => HOTKEY_LABELS[hk.id] || hk.id)
+                          .join(', ')}
+                        . Pick a different combo below.
+                      </p>
+                    ) : null}
                     <div className="field">
                       <label htmlFor="hk-overlay">Toggle overlay</label>
                       <HotkeyInput
@@ -1818,7 +1973,7 @@ export function CompanionApp() {
                                 <div className="mod-row__title">{HOTKEY_LABELS[hk.id]}</div>
                                 <div className="mod-row__meta">{prettyHotkey(hk.requested)}</div>
                               </div>
-                              <div className={`mod-row__value ${hk.ok ? 'is-ok' : ''}`}>
+                              <div className={`mod-row__value ${hk.ok ? 'is-ok' : 'is-bad'}`}>
                                 {hk.ok && hk.registered
                                   ? prettyHotkey(hk.registered)
                                   : 'Not registered'}

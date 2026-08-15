@@ -135,6 +135,26 @@ export function OverlayApp() {
         ? `${hotkeyLabel}, then drag to move`
         : undefined
 
+  const ocrPhase = (() => {
+    if (relicScan.scanning || rivenScan.scanning) return 'reading' as const
+    if (relicScan.error || rivenScan.error) return 'error' as const
+    if (relicScan.active && relicScan.rewards.length > 0) return 'done' as const
+    if (rivenScan.active && (rivenScan.current || rivenScan.reroll)) return 'done' as const
+    return 'idle' as const
+  })()
+  const ocrLabel =
+    ocrPhase === 'reading'
+      ? relicScan.scanning
+        ? 'OCR · reading relics'
+        : 'OCR · reading rivens'
+      : ocrPhase === 'done'
+        ? relicScan.active && relicScan.rewards.length
+          ? 'OCR · relic ready'
+          : 'OCR · riven ready'
+        : ocrPhase === 'error'
+          ? 'OCR · failed'
+          : 'OCR · idle'
+
   const cue = toggleCue ? (
     <div className={`overlay-toggle-cue ${toggleCue === 'off' ? 'is-off' : ''}`}>
       Overlay {toggleCue === 'on' ? 'ON' : 'OFF'}
@@ -180,8 +200,14 @@ export function OverlayApp() {
         onAnchorsChange={onAnchorsChange}
         onAnchorsCommit={commitAnchors}
         onPanelMoved={dismissDragHint}
+        relicScanning={relicScan.scanning}
+        rivenScanning={rivenScan.scanning}
       />
       {cue}
+      <div className={`ocr-status-chip is-${ocrPhase}`} role="status" aria-live="polite">
+        <span className="ocr-status-chip__dot" aria-hidden />
+        <span>{ocrLabel}</span>
+      </div>
       <OverlayMissionStrip
         settings={settings}
         data={data}

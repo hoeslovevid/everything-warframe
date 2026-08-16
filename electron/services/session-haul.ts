@@ -71,8 +71,8 @@ export function getSessionHaul(): SessionHaulSnapshot {
     relicHits: relicHits.slice(0, 12),
     neededParts,
     platEstimate,
-    inventoryAdded: inventoryAdded.slice(0, 10),
-    inventoryChanged: inventoryChanged.slice(0, 10),
+    inventoryAdded: inventoryAdded.slice(0, 30),
+    inventoryChanged: inventoryChanged.slice(0, 30),
     lastSyncAt,
   }
 }

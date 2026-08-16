@@ -118,20 +118,33 @@ async function loadPaddlePool(): Promise<PaddleOcr[]> {
 
         const first = await createPaddleInstance(create)
         const pool: PaddleOcr[] = [first]
-        // Second instance enables concurrent relic slot OCR.
-        try {
-          const second = await createPaddleInstance(create)
-          pool.push(second)
-        } catch (err) {
-          console.warn(
-            '[Everything Warframe] Second PaddleOCR instance unavailable — serial detect only',
-            err instanceof Error ? err.message : err,
-          )
+        // Second instance enables concurrent relic slot OCR — default off to cut GPU/CPU vs Warframe.
+        // Opt in: EW_OCR_POOL=2 or Settings → ocrPoolSize = 2.
+        let wantDual = process.env.EW_OCR_POOL === '2'
+        if (!wantDual) {
+          try {
+            const { loadSettings } = await import('../settings')
+            wantDual = loadSettings().ocrPoolSize === 2
+          } catch {
+            wantDual = false
+          }
+        }
+        if (wantDual) {
+          try {
+            const second = await createPaddleInstance(create)
+            pool.push(second)
+          } catch (err) {
+            console.warn(
+              '[Everything Warframe] Second PaddleOCR instance unavailable — serial detect only',
+              err instanceof Error ? err.message : err,
+            )
+          }
         }
         paddlePool = pool
         paddleAvailable = [...pool]
         console.info(
-          `[Everything Warframe] OCR engine: PaddleOCR (PP-OCRv4 ONNX) ×${pool.length}`,
+          `[Everything Warframe] OCR engine: PaddleOCR (PP-OCRv4 ONNX) ×${pool.length}` +
+            (pool.length === 1 ? ' (perf — enable dual OCR in Settings for faster multi-slot)' : ''),
         )
         return pool
       } catch (err) {

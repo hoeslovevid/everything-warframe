@@ -383,6 +383,21 @@ export const MODULE_TOGGLE_HOTKEY_TO_ID: Record<
   toggleModuleDeepArchimedea: 'deepArchimedea',
 }
 
+export type SessionGoalKind =
+  | 'relic_scans'
+  | 'needed_parts'
+  | 'plat_seen'
+  | 'inventory_item'
+
+export type SessionGoal = {
+  id: string
+  kind: SessionGoalKind
+  target: number
+  /** Substring match on inventory display names (inventory_item). */
+  matchName?: string
+  label?: string
+}
+
 export type AppSettings = {
   modules: Record<ModuleId, boolean>
   panelAnchors: Partial<Record<ModuleId, PanelAnchor>>
@@ -516,6 +531,19 @@ export type AppSettings = {
   quietFocusActive: boolean
   /** Module snapshot restored when leaving quiet focus (null when inactive). */
   quietFocusModulesBackup: Partial<Record<ModuleId, boolean>> | null
+  /**
+   * Reduce GPU/CPU contention with Warframe: deferred OCR warmup, capture stream
+   * idle release, slower overlay clock, optional tight overlay bounds, single OCR
+   * by default, skip inventory auto-sync while OCR is running.
+   */
+  gamePerformanceMode: boolean
+  /** PaddleOCR worker count. 1 = less contention; 2 = faster multi-slot relic OCR. */
+  ocrPoolSize: 1 | 2
+  /**
+   * Shrink the overlay BrowserWindow to the union of visible panels (less fullscreen
+   * transparent compositing). Disabled automatically while layout editing.
+   */
+  overlayTightBounds: boolean
   /** Collapse companion sidebar to icon-only. */
   navCollapsed: boolean
   /** Auto-resync inventory while Warframe is running. */
@@ -526,6 +554,10 @@ export type AppSettings = {
   baroArrivalNotify: boolean
   /** Last Baro visit key we already notified for (departure/arrival). */
   baroArrivalNotifiedKey: string
+  /**
+   * Session goals — live counters from relic OCR + inventory haul this app session.
+   */
+  sessionGoals: SessionGoal[]
   /** Hide Market session guide. */
   marketSessionGuideDismissed: boolean
   /** Last app version for which “What’s new” was dismissed. */
@@ -765,11 +797,18 @@ export const DEFAULT_SETTINGS: AppSettings = {
   quietMode: false,
   quietFocusActive: false,
   quietFocusModulesBackup: null,
+  gamePerformanceMode: true,
+  ocrPoolSize: 1,
+  overlayTightBounds: true,
   navCollapsed: false,
   inventoryAutoSync: true,
   inventoryRemindWhenRunning: true,
   baroArrivalNotify: true,
   baroArrivalNotifiedKey: '',
+  sessionGoals: [
+    { id: 'goal-scans', kind: 'relic_scans', target: 10, label: 'Relic scans' },
+    { id: 'goal-needed', kind: 'needed_parts', target: 3, label: 'Needed parts' },
+  ],
   marketSessionGuideDismissed: false,
   lastSeenVersion: '',
   onboarding: {
@@ -937,6 +976,26 @@ export type CircuitInfo = {
   currentReward: string | null
   rotation: string[]
   isActive: boolean
+}
+
+export type CircuitRewardRow = {
+  name: string
+  isCurrent: boolean
+  owned: boolean
+  ownedCount: number
+  uniqueName: string | null
+  note: string
+}
+
+export type CircuitTrackerSnapshot = {
+  expiry: string
+  eta: string
+  isActive: boolean
+  currentReward: string | null
+  rewards: CircuitRewardRow[]
+  ownedCount: number
+  missingCount: number
+  inventoryLoaded: boolean
 }
 
 export type InventoryIndex = Record<string, number>
@@ -1804,6 +1863,14 @@ export type UninstallInfo = {
   guidance: string
 }
 
+export type OverlayContentOrigin = {
+  x: number
+  y: number
+  designWidth: number
+  designHeight: number
+  tight: boolean
+}
+
 export type VoidLensApi = {
   getSettings: () => Promise<AppSettings>
   updateSettings: (partial: Partial<AppSettings>) => Promise<AppSettings>
@@ -1856,6 +1923,7 @@ export type VoidLensApi = {
   }) => Promise<SetProgressResult>
   getInventoryDiff: () => Promise<InventoryDiff | null>
   getLoadoutSnapshot: () => Promise<LoadoutSnapshot>
+  getCircuitTracker: () => Promise<CircuitTrackerSnapshot>
   getArbitrationLog: () => Promise<ArbitrationLogSnapshot>
   clearArbitrationLog: () => Promise<ArbitrationLogSnapshot>
   getSessionHaul: () => Promise<SessionHaulSnapshot>
@@ -1948,6 +2016,8 @@ export type VoidLensApi = {
   onSettingsChanged: (cb: (settings: AppSettings) => void) => () => void
   onWorldstateUpdated: (cb: (data: WorldstateSnapshot) => void) => () => void
   onOverlayVisibilityChanged: (cb: (visible: boolean) => void) => () => void
+  onOverlayContentOrigin: (cb: (origin: OverlayContentOrigin) => void) => () => void
+  getOverlayContentOrigin: () => Promise<OverlayContentOrigin | null>
   onInventoryUpdated: (cb: (status: InventoryStatus) => void) => () => void
   onInventoryProgress: (
     cb: (progress: { stage: string; message: string }) => void,

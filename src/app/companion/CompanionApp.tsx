@@ -26,6 +26,9 @@ import { AppTour, TourStep } from '../../components/AppTour'
 import { StatusStrip } from '../../components/StatusStrip'
 import { TodaySummary } from '../../components/TodaySummary'
 import { WeeklyResetCard } from '../../components/WeeklyResetCard'
+import { BaroBuyAdvisorCard } from '../../components/BaroBuyAdvisorCard'
+import { SessionGoalsCard } from '../../components/SessionGoalsCard'
+import { CircuitTrackerPanel } from '../../modules/circuit/CircuitTrackerPanel'
 import { HotkeySheet } from '../../components/HotkeySheet'
 import { HotkeyInput } from '../../components/HotkeyInput'
 import { HelpPage } from '../../components/HelpPage'
@@ -972,6 +975,30 @@ export function CompanionApp() {
                   />
                 </div>
 
+                <div className="grid-2" style={{ marginBottom: 16 }}>
+                  <CircuitTrackerPanel
+                    worldstateKey={data.fetchedAt || ''}
+                    onSyncInventory={() => void syncInventoryNow()}
+                  />
+                  <SessionGoalsCard
+                    settings={settings}
+                    onUpdate={(partial) => void updateSettings(partial)}
+                    onClearHaul={() => void window.voidlens?.clearSessionHaul()}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <BaroBuyAdvisorCard
+                    baro={data.baro}
+                    wishlist={settings.baroWishlist}
+                    playerDucats={playerDucats}
+                    playerCredits={playerCredits}
+                    dumpableDucats={dumpableDucats}
+                    onToggleWish={toggleBaroWish}
+                    onOpenInventory={() => goTab('inventory')}
+                  />
+                </div>
+
                 <div className="toolbar" data-tour="toolbar-hotkeys">
                   <button className="btn primary" onClick={() => void refresh()}>
                     Refresh worldstate
@@ -1772,6 +1799,26 @@ export function CompanionApp() {
                       description={`${prettyHotkey(settings.hotkeys.toggleQuietFocus)} — only fissures + relic/riven OCR. Mission strip also toggles.`}
                       checked={settings.quietFocusActive}
                       onChange={() => void window.voidlens?.toggleQuietFocus?.()}
+                    />
+                    <ToggleRow
+                      label="Game performance mode"
+                      description="Less lag vs Warframe: defer OCR warmup, release screen capture when idle, slower countdown clock, pause inventory sync while OCR runs"
+                      checked={settings.gamePerformanceMode}
+                      onChange={(enabled) => void updateSettings({ gamePerformanceMode: enabled })}
+                    />
+                    <ToggleRow
+                      label="Tight overlay bounds"
+                      description="Shrink the transparent overlay window to visible panels (requires Game performance mode). Layout edit uses full screen."
+                      checked={settings.overlayTightBounds}
+                      onChange={(enabled) => void updateSettings({ overlayTightBounds: enabled })}
+                    />
+                    <ToggleRow
+                      label="Dual OCR workers"
+                      description="Faster multi-slot relic reads; uses more CPU/GPU. Restart app after changing."
+                      checked={settings.ocrPoolSize === 2}
+                      onChange={(enabled) =>
+                        void updateSettings({ ocrPoolSize: enabled ? 2 : 1 })
+                      }
                     />
                     <ToggleRow
                       label="Relic scan chime"

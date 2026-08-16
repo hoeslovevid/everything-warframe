@@ -72,6 +72,7 @@ const api: VoidLensApi = {
   getSessionHaul: () => ipcRenderer.invoke('session:haul'),
   clearSessionHaul: () => ipcRenderer.invoke('session:haulClear'),
   getLoadoutSnapshot: () => ipcRenderer.invoke('loadout:get'),
+  getCircuitTracker: () => ipcRenderer.invoke('circuit:tracker'),
   getArbitrationLog: () => ipcRenderer.invoke('arb:log'),
   clearArbitrationLog: () => ipcRenderer.invoke('arb:logClear'),
   suggestMarketUndercut: (name) => ipcRenderer.invoke('market:undercut', name),
@@ -128,6 +129,15 @@ const api: VoidLensApi = {
     ipcRenderer.on('overlay:visibility', listener)
     return () => ipcRenderer.removeListener('overlay:visibility', listener)
   },
+  onOverlayContentOrigin: (cb) => {
+    const listener = (
+      _: Electron.IpcRendererEvent,
+      origin: import('../shared/types').OverlayContentOrigin,
+    ) => cb(origin)
+    ipcRenderer.on('overlay:contentOrigin', listener)
+    return () => ipcRenderer.removeListener('overlay:contentOrigin', listener)
+  },
+  getOverlayContentOrigin: () => ipcRenderer.invoke('overlay:contentOrigin'),
   onInventoryUpdated: (cb) => {
     const listener = (_: Electron.IpcRendererEvent, status: InventoryStatus) => cb(status)
     ipcRenderer.on('inventory:updated', listener)

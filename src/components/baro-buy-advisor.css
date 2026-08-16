@@ -1,0 +1,67 @@
+.baro-buy-advisor__wallet {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+}
+
+.baro-buy-advisor__plan {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: var(--vl-radius-sm);
+  border: 1px solid color-mix(in srgb, var(--vl-panel-border) 75%, transparent);
+  background: color-mix(in srgb, var(--vl-void-850) 55%, transparent);
+  font-size: 0.86rem;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.baro-buy-advisor__plan .is-ok {
+  color: var(--vl-teal);
+}
+
+.baro-buy-advisor__plan .is-warn {
+  color: var(--vl-gold-soft);
+}
+
+.baro-buy-advisor__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  counter-reset: none;
+}
+
+.baro-buy-advisor__row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: var(--vl-radius-sm);
+  border: 1px solid color-mix(in srgb, var(--vl-panel-border) 70%, transparent);
+}
+
+.baro-buy-advisor__row.is-ok {
+  border-color: color-mix(in srgb, var(--vl-teal) 45%, transparent);
+}
+
+.baro-buy-advisor__row.is-no {
+  opacity: 0.85;
+}
+
+.baro-buy-advisor__rank {
+  font-weight: 700;
+  color: var(--vl-accent);
+  text-align: center;
+}
+
+.baro-buy-advisor__name {
+  font-weight: 600;
+  color: var(--vl-frost);
+}
+
+.baro-buy-advisor__main .muted {
+  font-size: var(--vl-type-meta);
+}

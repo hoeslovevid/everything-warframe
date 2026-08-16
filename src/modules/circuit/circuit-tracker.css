@@ -1,0 +1,62 @@
+.circuit-tracker__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: baseline;
+  margin-bottom: 10px;
+  font-size: 0.9rem;
+}
+
+.circuit-tracker__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.circuit-tracker__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  padding: 8px 10px;
+  border-radius: var(--vl-radius-sm);
+  border: 1px solid color-mix(in srgb, var(--vl-panel-border) 70%, transparent);
+  background: color-mix(in srgb, var(--vl-void-850) 50%, transparent);
+}
+
+.circuit-tracker__row.is-current {
+  border-color: color-mix(in srgb, var(--vl-accent) 55%, transparent);
+}
+
+.circuit-tracker__row.is-owned .circuit-tracker__status {
+  color: var(--vl-teal);
+}
+
+.circuit-tracker__row.is-missing .circuit-tracker__status {
+  color: var(--vl-gold-soft);
+}
+
+.circuit-tracker__name {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  font-weight: 600;
+  color: var(--vl-frost);
+}
+
+.circuit-tracker__note {
+  grid-column: 1 / -1;
+  font-size: var(--vl-type-meta);
+  color: var(--vl-mist);
+}
+
+.circuit-tracker__status {
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  align-self: start;
+}

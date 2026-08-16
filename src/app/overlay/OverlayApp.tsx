@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ModuleId, OcrScanRegions, OVERLAY_MODULE_IDS, PanelAnchor } from '../../../shared/types'
+import {
+  ModuleId,
+  OcrScanRegions,
+  OverlayContentOrigin,
+  OVERLAY_MODULE_IDS,
+  PanelAnchor,
+} from '../../../shared/types'
 import { OverlayLayoutStage } from '../../components/OverlayLayoutStage'
 import { NowProvider } from '../../hooks/NowContext'
 import { useColorTheme } from '../../hooks/useColorTheme'
@@ -26,6 +32,7 @@ export function OverlayApp() {
   const [ocrRegions, setOcrRegions] = useState<OcrScanRegions>(settings.ocrScanRegions)
   const [toggleCue, setToggleCue] = useState<'on' | 'off' | null>(null)
   const [ocrMenuOpen, setOcrMenuOpen] = useState(false)
+  const [contentOrigin, setContentOrigin] = useState<OverlayContentOrigin | null>(null)
   /** Skip settings→anchors sync while a panel drag/commit is in flight (OCR saves can race). */
   const anchorsLocalRef = useRef(false)
   const [playerDucats, setPlayerDucats] = useState<number | null>(null)
@@ -43,6 +50,11 @@ export function OverlayApp() {
       setPlayerCredits(typeof index.RegularCredits === 'number' ? index.RegularCredits : null)
       setPlayerDucats(typeof index.Ducats === 'number' ? index.Ducats : null)
     })
+    // Dumpable ducat browse is heavy — only when Baro panel is on the overlay.
+    if (!settings.modules.baro) {
+      setDumpableDucats(null)
+      return
+    }
     void window.voidlens
       .browseInventory?.({ sellableOnly: true, enrichPrices: true, sort: 'ducats', limit: 200 })
       .then((rows) => {
@@ -52,7 +64,15 @@ export function OverlayApp() {
         }
         setDumpableDucats(sum)
       })
-  }, [inventory.loaded, inventory.revision])
+  }, [inventory.loaded, inventory.revision, settings.modules.baro])
+
+  useEffect(() => {
+    void window.voidlens?.getOverlayContentOrigin?.().then((o) => {
+      if (o) setContentOrigin(o)
+    })
+    const unsub = window.voidlens?.onOverlayContentOrigin?.((o) => setContentOrigin(o))
+    return () => unsub?.()
+  }, [])
 
   useEffect(() => {
     if (anchorsLocalRef.current) return
@@ -163,113 +183,131 @@ export function OverlayApp() {
     </div>
   ) : null
 
+  const clockMs = settings.gamePerformanceMode ? 3000 : 1000
+  const originShift =
+    contentOrigin?.tight && !settings.layoutEditMode
+      ? { transform: `translate(${-contentOrigin.x}px, ${-contentOrigin.y}px)` }
+      : undefined
+  const designSize =
+    contentOrigin?.tight && !settings.layoutEditMode
+      ? {
+          width: contentOrigin.designWidth,
+          height: contentOrigin.designHeight,
+        }
+      : undefined
+
   if (!ready || !settings.overlayVisible) {
     // Keep a brief OFF cue visible even while the window is being hidden.
     return <div className="overlay-root">{cue}</div>
   }
 
   return (
-    <NowProvider active intervalMs={1000}>
-      <OverlayLayoutStage
-        mode="live"
-        editable={settings.layoutEditMode}
-        modules={modules}
-        data={data}
-        anchors={anchors}
-        opacity={settings.opacity}
-        moduleOpacity={settings.moduleOpacity}
-        overlayScale={settings.overlayScale}
-        fissureTiers={settings.fissureTiers}
-        fissurePathMode={settings.fissurePathMode}
-        fissureShowStorms={settings.fissureShowStorms}
-        fissureSort={settings.fissureSort}
-        baroWishlist={settings.baroWishlist}
-        nightwaveDoneIds={settings.nightwaveDoneIds}
-        playerDucats={playerDucats}
-        playerCredits={playerCredits}
-        dumpableDucats={dumpableDucats}
-        dragHint={dragHint}
-        hint={
-          settings.layoutEditMode
-            ? `${hotkeyLabel || 'Hotkey'} again to lock · panels + OCR areas auto-save`
-            : undefined
-        }
-        showOcrGuides={settings.layoutEditMode}
-        ocrGuidesEditable={settings.layoutEditMode}
-        ocrScanRegions={ocrRegions}
-        onOcrScanRegionsChange={setOcrRegions}
-        onOcrScanRegionsCommit={commitOcrRegions}
-        onAnchorsChange={onAnchorsChange}
-        onAnchorsCommit={commitAnchors}
-        onPanelMoved={dismissDragHint}
-        relicScanning={relicScan.scanning}
-        rivenScanning={rivenScan.scanning}
-      />
-      {cue}
+    <NowProvider active intervalMs={clockMs}>
       <div
-        className={`ocr-status-chip is-${ocrPhase}${ocrMenuOpen ? ' is-open' : ''}`}
-        role="status"
-        aria-live="polite"
+        className={`overlay-perf-shell${contentOrigin?.tight && !settings.layoutEditMode ? ' is-tight' : ''}`}
+        style={{ ...originShift, ...designSize }}
       >
-        <button
-          type="button"
-          className="ocr-status-chip__main"
-          onClick={() => setOcrMenuOpen((v) => !v)}
-          title="OCR actions"
+        <OverlayLayoutStage
+          mode="live"
+          editable={settings.layoutEditMode}
+          modules={modules}
+          data={data}
+          anchors={anchors}
+          opacity={settings.opacity}
+          moduleOpacity={settings.moduleOpacity}
+          overlayScale={settings.overlayScale}
+          fissureTiers={settings.fissureTiers}
+          fissurePathMode={settings.fissurePathMode}
+          fissureShowStorms={settings.fissureShowStorms}
+          fissureSort={settings.fissureSort}
+          baroWishlist={settings.baroWishlist}
+          nightwaveDoneIds={settings.nightwaveDoneIds}
+          playerDucats={playerDucats}
+          playerCredits={playerCredits}
+          dumpableDucats={dumpableDucats}
+          dragHint={dragHint}
+          hint={
+            settings.layoutEditMode
+              ? `${hotkeyLabel || 'Hotkey'} again to lock · panels + OCR areas auto-save`
+              : undefined
+          }
+          showOcrGuides={settings.layoutEditMode}
+          ocrGuidesEditable={settings.layoutEditMode}
+          ocrScanRegions={ocrRegions}
+          onOcrScanRegionsChange={setOcrRegions}
+          onOcrScanRegionsCommit={commitOcrRegions}
+          onAnchorsChange={onAnchorsChange}
+          onAnchorsCommit={commitAnchors}
+          onPanelMoved={dismissDragHint}
+          relicScanning={relicScan.scanning}
+          rivenScanning={rivenScan.scanning}
+        />
+        {cue}
+        <div
+          className={`ocr-status-chip is-${ocrPhase}${ocrMenuOpen ? ' is-open' : ''}`}
+          role="status"
+          aria-live="polite"
         >
-          <span className="ocr-status-chip__dot" aria-hidden />
-          <span>{ocrLabel}</span>
-        </button>
-        {ocrMenuOpen ? (
-          <div className="ocr-status-chip__menu">
-            <button
-              type="button"
-              className="ocr-status-chip__action"
-              onClick={() => {
-                setOcrMenuOpen(false)
-                if (rivenScan.active || rivenScan.scanning) void scanRivens()
-                else void scanRelics()
-              }}
-            >
-              Retry
-            </button>
-            <button
-              type="button"
-              className="ocr-status-chip__action"
-              onClick={() => {
-                setOcrMenuOpen(false)
-                if (rivenScan.active || rivenScan.scanning) void clearRivens()
-                else void clearRelics()
-              }}
-            >
-              Dismiss
-            </button>
-            <button
-              type="button"
-              className="ocr-status-chip__action"
-              onClick={() => {
-                setOcrMenuOpen(false)
-                void window.voidlens?.navigateCompanion?.('settings')
-              }}
-            >
-              Settings
-            </button>
-          </div>
-        ) : null}
+          <button
+            type="button"
+            className="ocr-status-chip__main"
+            onClick={() => setOcrMenuOpen((v) => !v)}
+            title="OCR actions"
+          >
+            <span className="ocr-status-chip__dot" aria-hidden />
+            <span>{ocrLabel}</span>
+          </button>
+          {ocrMenuOpen ? (
+            <div className="ocr-status-chip__menu">
+              <button
+                type="button"
+                className="ocr-status-chip__action"
+                onClick={() => {
+                  setOcrMenuOpen(false)
+                  if (rivenScan.active || rivenScan.scanning) void scanRivens()
+                  else void scanRelics()
+                }}
+              >
+                Retry
+              </button>
+              <button
+                type="button"
+                className="ocr-status-chip__action"
+                onClick={() => {
+                  setOcrMenuOpen(false)
+                  if (rivenScan.active || rivenScan.scanning) void clearRivens()
+                  else void clearRelics()
+                }}
+              >
+                Dismiss
+              </button>
+              <button
+                type="button"
+                className="ocr-status-chip__action"
+                onClick={() => {
+                  setOcrMenuOpen(false)
+                  void window.voidlens?.navigateCompanion?.('settings')
+                }}
+              >
+                Settings
+              </button>
+            </div>
+          ) : null}
+        </div>
+        <OverlayMissionStrip
+          settings={settings}
+          data={data}
+          inventory={inventory}
+          syncProgress={inventoryProgress}
+          onSyncInventory={() => {
+            void syncFromGame()
+          }}
+          onToggleQuietFocus={() => {
+            void window.voidlens?.toggleQuietFocus?.()
+          }}
+        />
+        <ToastHost />
       </div>
-      <OverlayMissionStrip
-        settings={settings}
-        data={data}
-        inventory={inventory}
-        syncProgress={inventoryProgress}
-        onSyncInventory={() => {
-          void syncFromGame()
-        }}
-        onToggleQuietFocus={() => {
-          void window.voidlens?.toggleQuietFocus?.()
-        }}
-      />
-      <ToastHost />
     </NowProvider>
   )
 }

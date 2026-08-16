@@ -30,7 +30,13 @@ import {
   setCaptureOverlayPause,
   warmScreenCapture,
 } from './services/screen-capture'
-import { disposePersistentCapture } from './services/persistent-screen-capture'
+import { disposePersistentCapture, schedulePersistentCaptureIdleRelease } from './services/persistent-screen-capture'
+import {
+  applyOverlayWindowBounds,
+  getOverlayContentOrigin,
+  setOverlayOriginListener,
+  type OverlayContentOrigin,
+} from './services/overlay-bounds'
 import {
   clearUserDataAndQuit,
   getUninstallInfo,
@@ -243,6 +249,10 @@ async function runRelicScan(trigger: 'manual' | 'log', squadSize?: number | null
   setRelicSquadSizeHint(squadSize ?? logWatcher.getSquadSizeHint())
   const state = await scanRelicRewards(trigger)
   broadcastRelicScan()
+  noteCaptureIdleAfterScan()
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    restoreOverlayGeometry(overlayWindow)
+  }
   if (state.rewards.length && !state.error) {
     if (settings.relicSoundEnabled) {
       const soundTarget =
@@ -309,6 +319,10 @@ async function runRivenScan(trigger: 'manual' | 'log') {
   }
   const state = await scanRivens(trigger)
   broadcastRivenScan()
+  noteCaptureIdleAfterScan()
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    restoreOverlayGeometry(overlayWindow)
+  }
   if ((state.current || state.reroll) && !state.error && settings.rivenSoundEnabled) {
     const soundTarget =
       overlayWindow && !overlayWindow.isDestroyed()
@@ -583,12 +597,21 @@ function createCompanionWindow() {
 }
 
 function restoreOverlayGeometry(win: BrowserWindow) {
-  const display = resolveOcrDisplay()
-  const { x, y, width, height } = display.bounds
   try {
-    win.setBounds({ x, y, width, height })
+    applyOverlayWindowBounds(win, loadSettings())
   } catch {
     // Wayland may ignore programmatic moves; best-effort.
+    try {
+      const display = resolveOcrDisplay()
+      win.setBounds({
+        x: display.bounds.x,
+        y: display.bounds.y,
+        width: display.bounds.width,
+        height: display.bounds.height,
+      })
+    } catch {
+      // ignore
+    }
   }
   try {
     win.setOpacity(1)
@@ -601,6 +624,28 @@ function restoreOverlayGeometry(win: BrowserWindow) {
   } catch {
     // ignore
   }
+}
+
+function syncLogWatcherInterval() {
+  const settings = loadSettings()
+  const ocrOn = settings.modules.relics || settings.modules.rivens
+  // Faster when OCR modules on; slower otherwise to cut background wakeups.
+  const ms =
+    process.platform === 'linux'
+      ? ocrOn
+        ? 800
+        : 2000
+      : ocrOn
+        ? settings.gamePerformanceMode
+          ? 1100
+          : 900
+        : 2000
+  logWatcher.start(ms)
+}
+
+function noteCaptureIdleAfterScan() {
+  if (!loadSettings().gamePerformanceMode) return
+  schedulePersistentCaptureIdleRelease(45_000)
 }
 
 function refreshTrayUi() {
@@ -1256,6 +1301,21 @@ function registerIpc() {
     ) {
       syncMarketBuyAlertsFromSettings()
     }
+    if (
+      partial.modules !== undefined ||
+      partial.panelAnchors !== undefined ||
+      partial.gamePerformanceMode !== undefined ||
+      partial.overlayTightBounds !== undefined ||
+      partial.overlayScale !== undefined ||
+      partial.layoutEditMode !== undefined
+    ) {
+      if (overlayWindow && !overlayWindow.isDestroyed()) {
+        restoreOverlayGeometry(overlayWindow)
+      }
+    }
+    if (partial.modules !== undefined || partial.gamePerformanceMode !== undefined) {
+      syncLogWatcherInterval()
+    }
     // Caller already applied the returned settings — skip echoing to that window.
     broadcastSettings(next, e.sender)
     return next
@@ -1264,6 +1324,10 @@ function registerIpc() {
     const next = setModuleEnabled(id, enabled)
     broadcastSettings(next, e.sender)
     if (id === 'market') syncMarketBuyAlertsFromSettings()
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      restoreOverlayGeometry(overlayWindow)
+    }
+    syncLogWatcherInterval()
     if (
       enabled &&
       process.platform === 'linux' &&
@@ -1281,6 +1345,7 @@ function registerIpc() {
   ipcMain.handle('overlay:toggle', () => {
     return setOverlayVisible(!loadSettings().overlayVisible, { announce: true })
   })
+  ipcMain.handle('overlay:contentOrigin', () => getOverlayContentOrigin())
   ipcMain.handle('overlay:setLayoutEdit', (_e, enabled: boolean) => {
     const next = updateSettings({ layoutEditMode: enabled })
     applyLayoutEditMode(enabled)
@@ -1399,6 +1464,10 @@ function registerIpc() {
   ipcMain.handle('loadout:get', async () => {
     const { getLoadoutSnapshot } = await import('./services/loadout')
     return getLoadoutSnapshot()
+  })
+  ipcMain.handle('circuit:tracker', async () => {
+    const { getCircuitTracker } = await import('./services/circuit-tracker')
+    return getCircuitTracker(worldstateCache?.circuit ?? null)
   })
   ipcMain.handle('arb:log', async () => {
     const { getArbitrationLog } = await import('./services/arbitration-log')
@@ -1630,6 +1699,11 @@ app.whenReady().then(async () => {
 
   createCompanionWindow()
   overlayWindow = createOverlayWindow(isDev ? DEV_URL : null)
+  setOverlayOriginListener((origin: OverlayContentOrigin) => {
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.webContents.send('overlay:contentOrigin', origin)
+    }
+  })
   void syncWidgetServerFromSettings()
   syncMarketBuyAlertsFromSettings()
   setCaptureOverlayPause(() => {
@@ -1774,8 +1848,7 @@ app.whenReady().then(async () => {
       void import('./services/arbitration-log').then((m) => m.noteMissionComplete())
     }
   })
-  // Faster poll — reward pick timer is tight; Windows was 1500ms and often late (#8).
-  logWatcher.start(process.platform === 'linux' ? 800 : 900)
+  // Interval applied via syncLogWatcherInterval() after windows exist (perf-aware).
 
   preferLowerProcessPriority()
   registerHotkeys()
@@ -1793,9 +1866,10 @@ app.whenReady().then(async () => {
     void warmCompanionCatalogs()
   }, 1200)
 
-  // Prefetch prices + warm OCR/catalog while idle so the first scan isn't cold.
-  // Start soon after windows exist — warmup is async and should not block launch UI.
-  if (loadSettings().modules.relics || loadSettings().modules.rivens) {
+  // OCR / capture warmup is deferred until the first relic or riven scan
+  // (gamePerformanceMode) so we don't hold a desktop-duplication stream or
+  // Paddle workers while you're just playing. Catalogs still warm separately.
+  if (!loadSettings().gamePerformanceMode && (loadSettings().modules.relics || loadSettings().modules.rivens)) {
     setTimeout(() => {
       void (async () => {
         const settings = loadSettings()
@@ -1805,10 +1879,7 @@ app.whenReady().then(async () => {
             settings.modules.relics ? warmupRelicScanner() : Promise.resolve(),
             settings.modules.rivens ? warmupRivenScanner() : Promise.resolve(),
           ])
-          if (
-            process.platform !== 'linux' ||
-            settings.onboarding.linuxCaptureAck
-          ) {
+          if (process.platform !== 'linux' || settings.onboarding.linuxCaptureAck) {
             await warmScreenCapture().catch(() => {})
           }
           console.info('[Everything Warframe] OCR / catalog warmup done')
@@ -1820,13 +1891,16 @@ app.whenReady().then(async () => {
         }
       })()
     }, 500)
+  } else if (loadSettings().modules.relics || loadSettings().modules.rivens) {
+    console.info(
+      '[Everything Warframe] Game performance mode: OCR/capture warm on first scan (not at launch)',
+    )
   }
 
   // Linux/Wayland: only warm the PipeWire share after the user has authorized
-  // (or skipped) via the capture wizard — auto-prompting at launch races the
-  // wizard and can open a second portal that freezes the session.
-  // (Also covered by the OCR warmup path above when linuxCaptureAck is set.)
+  // (or skipped) via the capture wizard — and only when not in game perf mode.
   if (
+    !loadSettings().gamePerformanceMode &&
     process.platform === 'linux' &&
     loadSettings().onboarding.linuxCaptureAck &&
     (loadSettings().modules.relics || loadSettings().modules.rivens)
@@ -1847,6 +1921,12 @@ app.whenReady().then(async () => {
       const settings = loadSettings()
       if (!settings.inventoryAutoSync || !settings.inventoryConsent) return
       if (isInventorySyncInFlight()) return
+      if (
+        settings.gamePerformanceMode &&
+        (getRelicScanState().scanning || getRivenScanState().scanning)
+      ) {
+        return
+      }
       const running = await isWarframeRunning()
       if (!running) return
       const last = Date.parse(settings.inventoryLastSynced || '') || 0
@@ -1864,6 +1944,10 @@ app.whenReady().then(async () => {
   }, 2 * 60_000)
 
   applyOverlayPerformanceMode(loadSettings().overlayVisible)
+  syncLogWatcherInterval()
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    restoreOverlayGeometry(overlayWindow)
+  }
 
   app.on('activate', () => {
     createCompanionWindow()

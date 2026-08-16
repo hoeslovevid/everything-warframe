@@ -337,6 +337,17 @@ export const WHATS_NEW: Record<string, string[]> = {
     'Arbitration haul log: rare inventory gains after extract/sync this session',
     'Worldstate: Steel Path / Circuit rotation from warframestat when available',
   ],
+  '0.9.76': [
+    'Circuit / Incarnon tracker: this week’s rotation vs owned inventory',
+    'Baro buy advisor: wishlist ranked by affordability + dump gap',
+    'Session goals: live counters for relic scans, needed parts, plat, inventory gains',
+  ],
+  '0.9.77': [
+    'Game performance mode (on by default): less overlay lag vs Warframe',
+    'Defer OCR/capture warmup; release screen capture ~45s after scans',
+    'Tight overlay bounds + 3s countdown clock; single OCR worker by default',
+    'Fix inventory sync crash (write after end on helper stdin)',
+  ],
 }
 
 export function getWhatsNewBullets(version: string): string[] {

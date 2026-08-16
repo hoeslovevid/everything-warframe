@@ -9,6 +9,22 @@
   font-size: var(--vl-type-body);
 }
 
+/* Tight-bounds shell: full design surface shifted into a smaller BrowserWindow. */
+.overlay-perf-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.overlay-perf-shell.is-tight {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+  will-change: transform;
+}
+
 .overlay-root.layout-edit {
   pointer-events: auto;
   background: rgba(0, 0, 0, 0.2);
@@ -148,7 +164,7 @@
   padding: 6px 12px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(12, 14, 18, 0.78);
+  background: rgba(12, 14, 18, 0.9);
   color: #f2f4f7;
   font: inherit;
   font-size: 11px;
@@ -156,7 +172,6 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   cursor: pointer;
-  backdrop-filter: blur(8px);
 }
 
 .ocr-status-chip__main:hover,

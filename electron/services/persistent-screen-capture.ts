@@ -267,8 +267,40 @@ export function isPersistentCaptureLive(): boolean {
   return streamReady
 }
 
+/** Stop the desktop-duplication stream but keep the host window for faster re-auth. */
+export async function releasePersistentCaptureStream(): Promise<void> {
+  streamReady = false
+  initPromise = null
+  if (!win || win.isDestroyed()) return
+  try {
+    await win.webContents.executeJavaScript('window.__ewCapture?.stopStream?.()', true)
+    console.info('[Everything Warframe] Persistent screen capture stream released (idle)')
+  } catch {
+    // ignore
+  }
+}
+
+let idleReleaseTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Tear down the capture stream after `ms` of no OCR use (reduces GPU contention with Warframe). */
+export function schedulePersistentCaptureIdleRelease(ms = 45_000) {
+  if (idleReleaseTimer) clearTimeout(idleReleaseTimer)
+  idleReleaseTimer = setTimeout(() => {
+    idleReleaseTimer = null
+    void releasePersistentCaptureStream()
+  }, Math.max(5_000, ms))
+}
+
+export function cancelPersistentCaptureIdleRelease() {
+  if (idleReleaseTimer) {
+    clearTimeout(idleReleaseTimer)
+    idleReleaseTimer = null
+  }
+}
+
 /** Grab one full-desktop frame from the live stream (no new permission prompt). */
 export async function grabPersistentFrame(): Promise<FrameResult | null> {
+  cancelPersistentCaptureIdleRelease()
   const ok = await ensurePersistentCapture()
   if (!ok) return null
   try {
@@ -287,6 +319,7 @@ export async function grabPersistentFrame(): Promise<FrameResult | null> {
 }
 
 export function disposePersistentCapture() {
+  cancelPersistentCaptureIdleRelease()
   streamReady = false
   initPromise = null
   if (win && !win.isDestroyed()) {

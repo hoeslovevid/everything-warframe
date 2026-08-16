@@ -783,16 +783,39 @@ export function isInventorySyncInFlight(): boolean {
   return syncInFlight != null
 }
 
+/** Avoid ERR_STREAM_WRITE_AFTER_END — write() errors are async EventEmitter events. */
+function safeStdinWrite(
+  stdin: NodeJS.WritableStream | null | undefined,
+  data: string,
+  end = false,
+) {
+  if (!stdin) return
+  const stream = stdin as NodeJS.WriteStream & {
+    destroyed?: boolean
+    writableEnded?: boolean
+    _ewSafeHook?: boolean
+  }
+  if (stream.destroyed || stream.writableEnded || stream.writable === false) return
+  if (!stream._ewSafeHook) {
+    stream._ewSafeHook = true
+    stream.on('error', () => {
+      /* swallow closed-pipe noise so it cannot crash Electron */
+    })
+  }
+  try {
+    if (data) stream.write(data)
+    if (end) stream.end()
+  } catch {
+    // ignore
+  }
+}
+
 function stopActiveHelper(opts?: { clearOrphans?: boolean }) {
   const child = activeHelper
   activeHelper = null
   if (child?.pid) {
-    try {
-      child.stdin?.write('\r\n')
-      child.stdin?.end()
-    } catch {
-      // ignore
-    }
+    // Soft nudge only if stdin is still open — never write after end (crash #ERR_STREAM_WRITE_AFTER_END).
+    safeStdinWrite(child.stdin, '\r\n', true)
     const pid = child.pid
     try {
       // Detached Wine/Proton gets its own process group — signal the group.
@@ -1002,11 +1025,7 @@ async function syncInventoryFromGameUnlocked(): Promise<InventorySyncResult> {
     // Helper waits for Enter after (or before) finishing — pulse stdin immediately
     // so Proton/Wine does not sit for the full timeout with no inventory.json.
     const nudgeStdin = () => {
-      try {
-        child.stdin?.write('\r\n')
-      } catch {
-        // ignore
-      }
+      safeStdinWrite(child.stdin, '\r\n')
     }
     nudgeStdin()
     stdinPulse = setInterval(nudgeStdin, 1500)
@@ -1028,12 +1047,7 @@ async function syncInventoryFromGameUnlocked(): Promise<InventorySyncResult> {
       clearInterval(stdinPulse)
       stdinPulse = null
     }
-    try {
-      child.stdin?.write('\r\n')
-      child.stdin?.end()
-    } catch {
-      // ignore
-    }
+    // stopActiveHelper soft-closes stdin + SIGTERM — do not write/end twice.
     stopActiveHelper()
     // Give Wine a moment to flush a late write after kill/Enter.
     if (!foundPath) {

@@ -1,0 +1,80 @@
+.session-goals__list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.session-goals__row {
+  padding: 10px 12px;
+  border-radius: var(--vl-radius-sm);
+  border: 1px solid color-mix(in srgb, var(--vl-panel-border) 75%, transparent);
+  background: color-mix(in srgb, var(--vl-void-850) 50%, transparent);
+}
+
+.session-goals__row.is-done {
+  border-color: color-mix(in srgb, var(--vl-teal) 50%, transparent);
+}
+
+.session-goals__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  margin-bottom: 6px;
+  color: var(--vl-frost);
+}
+
+.session-goals__head .is-ok {
+  color: var(--vl-teal);
+  font-weight: 650;
+}
+
+.session-goals__bar {
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vl-void-700, #1a2430) 80%, transparent);
+  overflow: hidden;
+}
+
+.session-goals__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--vl-accent), var(--vl-teal));
+  transition: width 0.25s ease;
+}
+
+.session-goals__edit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+  margin-top: 8px;
+}
+
+.session-goals__edit label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vl-mist);
+}
+
+.session-goals__edit input {
+  min-width: 72px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--vl-panel-border) 80%, transparent);
+  background: color-mix(in srgb, var(--vl-void-900, #0b1016) 70%, transparent);
+  color: var(--vl-frost);
+}
+
+.session-goals__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}

@@ -429,6 +429,16 @@ function mergeSettings(raw: Partial<AppSettings> | null | undefined): AppSetting
     quietFocusModulesBackup:
       (raw as { quietFocusModulesBackup?: AppSettings['quietFocusModulesBackup'] })
         .quietFocusModulesBackup ?? base.quietFocusModulesBackup,
+    gamePerformanceMode:
+      typeof (raw as { gamePerformanceMode?: boolean }).gamePerformanceMode === 'boolean'
+        ? (raw as { gamePerformanceMode: boolean }).gamePerformanceMode
+        : base.gamePerformanceMode,
+    ocrPoolSize:
+      (raw as { ocrPoolSize?: number }).ocrPoolSize === 2 ? 2 : 1,
+    overlayTightBounds:
+      typeof (raw as { overlayTightBounds?: boolean }).overlayTightBounds === 'boolean'
+        ? (raw as { overlayTightBounds: boolean }).overlayTightBounds
+        : base.overlayTightBounds,
     navCollapsed: raw.navCollapsed ?? base.navCollapsed,
     overlayOnlyInWarframe:
       typeof (raw as { overlayOnlyInWarframe?: boolean }).overlayOnlyInWarframe === 'boolean'
@@ -448,6 +458,40 @@ function mergeSettings(raw: Partial<AppSettings> | null | undefined): AppSetting
       typeof (raw as { baroArrivalNotifiedKey?: string }).baroArrivalNotifiedKey === 'string'
         ? (raw as { baroArrivalNotifiedKey: string }).baroArrivalNotifiedKey
         : base.baroArrivalNotifiedKey,
+    sessionGoals: Array.isArray((raw as { sessionGoals?: unknown }).sessionGoals)
+      ? (
+          (raw as {
+            sessionGoals: Array<{
+              id?: string
+              kind?: string
+              target?: number
+              matchName?: string
+              label?: string
+            }>
+          }).sessionGoals || []
+        )
+          .filter(
+            (g) =>
+              g &&
+              typeof g.id === 'string' &&
+              (g.kind === 'relic_scans' ||
+                g.kind === 'needed_parts' ||
+                g.kind === 'plat_seen' ||
+                g.kind === 'inventory_item') &&
+              typeof g.target === 'number' &&
+              Number.isFinite(g.target),
+          )
+          .map((g) => ({
+            id: String(g.id),
+            kind: g.kind as AppSettings['sessionGoals'][number]['kind'],
+            target: Math.max(1, Math.floor(Number(g.target) || 1)),
+            matchName:
+              typeof g.matchName === 'string' && g.matchName.trim()
+                ? g.matchName.trim()
+                : undefined,
+            label: typeof g.label === 'string' && g.label.trim() ? g.label.trim() : undefined,
+          }))
+      : base.sessionGoals,
     marketSessionGuideDismissed:
       typeof (raw as { marketSessionGuideDismissed?: boolean }).marketSessionGuideDismissed ===
       'boolean'

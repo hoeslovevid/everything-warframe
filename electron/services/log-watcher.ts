@@ -92,6 +92,8 @@ export class LogWatcher extends EventEmitter {
   private path: string | null = null
   private offset = 0
   private timer: NodeJS.Timeout | null = null
+  private fsWatcher: fs.FSWatcher | null = null
+  private watchDebounce: NodeJS.Timeout | null = null
   private lastStartEmit = 0
   private lastEndEmit = 0
   private lastMissionCompleteEmit = 0
@@ -128,6 +130,7 @@ export class LogWatcher extends EventEmitter {
       clearTimeout(this.rivenArmTimer)
       this.rivenArmTimer = null
     }
+    this.reattachFsWatch()
     if (next && fs.existsSync(next)) {
       try {
         this.offset = fs.statSync(next).size
@@ -139,15 +142,60 @@ export class LogWatcher extends EventEmitter {
 
   start(intervalMs = 1500) {
     this.stop()
+    // Poll is a reliability fallback; fs.watch drives near-instant ticks when available.
     this.timer = setInterval(() => this.tick(), intervalMs)
+    this.reattachFsWatch()
   }
 
   stop() {
     if (this.timer) clearInterval(this.timer)
     this.timer = null
+    if (this.watchDebounce) clearTimeout(this.watchDebounce)
+    this.watchDebounce = null
+    if (this.fsWatcher) {
+      try {
+        this.fsWatcher.close()
+      } catch {
+        // ignore
+      }
+      this.fsWatcher = null
+    }
     if (this.rivenArmTimer) {
       clearTimeout(this.rivenArmTimer)
       this.rivenArmTimer = null
+    }
+  }
+
+  private reattachFsWatch() {
+    if (this.fsWatcher) {
+      try {
+        this.fsWatcher.close()
+      } catch {
+        // ignore
+      }
+      this.fsWatcher = null
+    }
+    if (!this.path || !fs.existsSync(this.path)) return
+    try {
+      this.fsWatcher = fs.watch(this.path, () => {
+        if (this.watchDebounce) clearTimeout(this.watchDebounce)
+        // Coalesce burst writes from the game into one tick.
+        this.watchDebounce = setTimeout(() => {
+          this.watchDebounce = null
+          this.tick()
+        }, 15)
+      })
+      this.fsWatcher.on('error', () => {
+        try {
+          this.fsWatcher?.close()
+        } catch {
+          // ignore
+        }
+        this.fsWatcher = null
+      })
+    } catch {
+      // Wine/Proton FS may not support watch — poll-only is fine.
+      this.fsWatcher = null
     }
   }
 
@@ -160,7 +208,7 @@ export class LogWatcher extends EventEmitter {
       if (!this.rivenCycleArmed) return
       this.rivenCycleArmed = false
       this.emitRivenStart()
-    }, 3200)
+    }, 1800)
   }
 
   private emitRivenStart() {

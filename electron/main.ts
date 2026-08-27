@@ -19,6 +19,13 @@ import { getAppIcon, getTrayIcon } from './app-icon'
 import { createOverlayWindow, setOverlayClickThrough } from './overlay-window'
 import { loadSettings, setModuleEnabled, updateSettings } from './settings'
 import {
+  clearCloudSyncPath,
+  pickCloudSyncFolder,
+  pullSettingsFromCloud,
+  pushSettingsToCloud,
+  scheduleCloudSettingsPush,
+} from './services/settings-cloud-sync'
+import {
   getOcrDisplayInfo,
   listDisplayChoices,
   onDisplayRemount,
@@ -635,17 +642,17 @@ function restoreOverlayGeometry(win: BrowserWindow) {
 function syncLogWatcherInterval() {
   const settings = loadSettings()
   const ocrOn = settings.modules.relics || settings.modules.rivens
-  // Faster when OCR modules on; slower otherwise to cut background wakeups.
+  // fs.watch drives near-instant ticks; poll is a reliability fallback only.
   const ms =
     process.platform === 'linux'
       ? ocrOn
-        ? 800
-        : 2000
+        ? 1200
+        : 2500
       : ocrOn
         ? settings.gamePerformanceMode
-          ? 1100
-          : 900
-        : 2000
+          ? 1600
+          : 1200
+        : 2500
   logWatcher.start(ms)
 }
 
@@ -1257,14 +1264,42 @@ function registerIpc() {
     try {
       const raw = JSON.parse(fs.readFileSync(result.filePaths[0], 'utf8')) as Partial<AppSettings>
       delete (raw as { _note?: string })._note
+      delete (raw as { _syncedAt?: string })._syncedAt
       const next = updateSettings(raw)
       broadcastSettings(next)
       registerHotkeys()
       syncOverlayWindowVisibility({ silent: true })
+      scheduleCloudSettingsPush(next)
       return { ok: true }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : 'Import failed' }
     }
+  })
+  ipcMain.handle('settings:cloudPickFolder', async () => {
+    const res = await pickCloudSyncFolder()
+    if (res.ok) broadcastSettings(loadSettings())
+    return res
+  })
+  ipcMain.handle('settings:cloudClear', () => {
+    clearCloudSyncPath()
+    const next = loadSettings()
+    broadcastSettings(next)
+    return { ok: true }
+  })
+  ipcMain.handle('settings:cloudPush', () => {
+    const res = pushSettingsToCloud()
+    return res
+  })
+  ipcMain.handle('settings:cloudPull', (_e, force?: boolean) => {
+    const res = pullSettingsFromCloud({ force: Boolean(force) })
+    if (res.ok && res.imported) {
+      const next = loadSettings()
+      broadcastSettings(next)
+      registerHotkeys()
+      syncOverlayWindowVisibility({ silent: true })
+      syncLogWatcherInterval()
+    }
+    return res
   })
   ipcMain.handle('settings:update', (e, partial: Partial<AppSettings>) => {
     const next = updateSettings(partial)
@@ -1287,6 +1322,7 @@ function registerIpc() {
     if (partial.ocrDisplayId !== undefined) {
       clearDisplayRemountWarning()
       invalidateCaptureCache()
+      disposePersistentCapture()
       if (overlayWindow && !overlayWindow.isDestroyed()) {
         restoreOverlayGeometry(overlayWindow)
       }
@@ -1322,6 +1358,7 @@ function registerIpc() {
     if (partial.modules !== undefined || partial.gamePerformanceMode !== undefined) {
       syncLogWatcherInterval()
     }
+    scheduleCloudSettingsPush(next)
     // Caller already applied the returned settings — skip echoing to that window.
     broadcastSettings(next, e.sender)
     return next
@@ -1704,7 +1741,14 @@ app.whenReady().then(async () => {
   registerIpc()
   setWidgetWorldstateProvider(() => worldstateCache)
 
-  const settings = loadSettings()
+  let settings = loadSettings()
+  if (settings.settingsCloudSyncAuto && settings.settingsCloudSyncPath?.trim()) {
+    const pull = pullSettingsFromCloud({ force: false })
+    if (pull.ok && pull.imported) {
+      console.info('[Everything Warframe] Pulled newer settings from cloud sync folder')
+      settings = loadSettings()
+    }
+  }
   if (!settings.eeLogPath) {
     const found = detectEeLogPath()
     if (found) updateSettings({ eeLogPath: found })
@@ -1788,6 +1832,8 @@ app.whenReady().then(async () => {
 
   reloadConfiguredInventory()
   onDisplayRemount((prompt) => {
+    invalidateCaptureCache()
+    disposePersistentCapture()
     broadcastDisplayRemount(prompt)
     raiseCompanion()
   })

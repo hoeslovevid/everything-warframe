@@ -99,7 +99,7 @@ export function GettingStarted({
     {
       key: 'layoutVisited' as const,
       label: 'Arrange overlay layout',
-      detail: `Unlock drag with ${prettyHotkey(settings.hotkeys.editLayout)}.`,
+      detail: `Unlock drag with ${prettyHotkey(settings.hotkeys.editLayout)}. Game performance + reward-HUD-only are on by default for fissure sessions.`,
       done: ob.layoutVisited,
       actionLabel: 'Open Layout',
       onAction: onGoLayout,
@@ -109,7 +109,8 @@ export function GettingStarted({
           {
             key: 'linuxCaptureAck' as const,
             label: 'Authorize Linux screen capture',
-            detail: 'PipeWire share once so relic/riven OCR can see the game.',
+            detail:
+              'PipeWire share once so relic/riven OCR can see the game. Pick Warframe’s monitor; leave sharing on (Proton Borderless).',
             done: ob.linuxCaptureAck,
             actionLabel: 'Open wizard',
             onAction: () => {

@@ -48,10 +48,10 @@ export function invalidateCaptureCache() {
 async function withOverlayPaused<T>(fn: () => Promise<T>): Promise<T> {
   const resume = pauseOverlayForCapture?.()
   try {
-    // Overlay hide is async on Wayland/XWayland — give the compositor time.
-    // Persistent stream is already live most of the time; keep settle short.
-    const settleMs = isPersistentCaptureLive() ? 40 : process.platform === 'linux' ? 140 : 50
-    await new Promise((r) => setTimeout(r, settleMs))
+    // Windows: contentProtection + opacity=0 already exclude the overlay from DWM.
+    // Linux/Wayland still needs a short compositor settle.
+    const settleMs = process.platform === 'linux' ? (isPersistentCaptureLive() ? 80 : 140) : 0
+    if (settleMs > 0) await new Promise((r) => setTimeout(r, settleMs))
     return await fn()
   } finally {
     resume?.()

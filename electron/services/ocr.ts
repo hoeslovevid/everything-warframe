@@ -118,15 +118,17 @@ async function loadPaddlePool(): Promise<PaddleOcr[]> {
 
         const first = await createPaddleInstance(create)
         const pool: PaddleOcr[] = [first]
-        // Second instance enables concurrent relic slot OCR — default off to cut GPU/CPU vs Warframe.
-        // Opt in: EW_OCR_POOL=2 or Settings → ocrPoolSize = 2.
+        // Second instance enables concurrent relic/riven OCR.
+        // Default dual unless Settings → ocrPoolSize is 1 (or EW_OCR_POOL=1).
         let wantDual = process.env.EW_OCR_POOL === '2'
-        if (!wantDual) {
+        if (process.env.EW_OCR_POOL === '1') wantDual = false
+        else if (!wantDual) {
           try {
             const { loadSettings } = await import('../settings')
-            wantDual = loadSettings().ocrPoolSize === 2
+            const s = loadSettings()
+            wantDual = s.ocrPoolSize !== 1
           } catch {
-            wantDual = false
+            wantDual = true
           }
         }
         if (wantDual) {
@@ -144,7 +146,7 @@ async function loadPaddlePool(): Promise<PaddleOcr[]> {
         paddleAvailable = [...pool]
         console.info(
           `[Everything Warframe] OCR engine: PaddleOCR (PP-OCRv4 ONNX) ×${pool.length}` +
-            (pool.length === 1 ? ' (perf — enable dual OCR in Settings for faster multi-slot)' : ''),
+            (pool.length === 1 ? ' (enable Dual OCR workers in Settings for speed)' : ''),
         )
         return pool
       } catch (err) {
@@ -271,9 +273,7 @@ async function prepareRivenRaw(
 ): Promise<ImageRawData> {
   try {
     const sharp = nodeRequire('sharp') as typeof import('sharp')
-    const meta = await sharp(png).metadata()
-    const width = meta.width || 400
-    const targetW = Math.max(640, Math.round(width * 2.6))
+    // Avoid a separate metadata() round-trip — resize by factor from pipeline input.
     let pipeline = sharp(png).grayscale().normalize()
     if (mode === 'harsh') {
       pipeline = pipeline.linear(1.85, -40).threshold(118)
@@ -288,7 +288,7 @@ async function prepareRivenRaw(
         right: 32,
         background: { r: 0, g: 0, b: 0, alpha: 1 },
       })
-      .resize({ width: targetW, kernel: 'lanczos3' })
+      .resize({ width: 1040, kernel: 'lanczos3' })
       .ensureAlpha()
       .raw()
       .toBuffer({ resolveWithObject: true })
@@ -315,12 +315,11 @@ async function prepareRelicRaw(
   const filtered = theme ? filterRelicTextPng(png, theme) : png
   try {
     const sharp = nodeRequire('sharp') as typeof import('sharp')
-    const meta = await sharp(filtered).metadata()
-    const width = meta.width || 0
     let pipeline = sharp(filtered).grayscale().normalize().sharpen({ sigma: 0.6 })
-    if (width > 0 && scale !== 1) {
+    if (scale !== 1) {
+      // Factor resize — skip metadata() round-trip on the hot path.
       pipeline = pipeline.resize({
-        width: Math.round(width * scale),
+        width: Math.max(64, Math.round(220 * scale)),
         kernel: 'lanczos3',
       })
     }

@@ -356,6 +356,13 @@ export const WHATS_NEW: Record<string, string[]> = {
     'Linux parity matrix: Steam / Wine / Proton / ptrace / capture / inventory',
     'Opt-in crash log → offer GitHub bug report on next launch',
   ],
+  '0.9.79': [
+    'Near-instant OCR: EE.log fs.watch, dual Paddle workers by default, faster readiness/retries',
+    'Relic OCR robustness: alt UI-theme retry, squad/monitor remount, Proton capture tips',
+    'Defaults: reward-screen HUD + dual OCR on (with game performance mode)',
+    'Cloud settings sync: Dropbox/OneDrive/Google Drive folder (auto pull on launch)',
+    'OneDrive-safe day-to-day dev: npm run dev:local → %LOCALAPPDATA%\\EverythingWarframe-dev',
+  ],
 }
 
 export function getWhatsNewBullets(version: string): string[] {

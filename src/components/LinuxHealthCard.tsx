@@ -235,6 +235,11 @@ export function LinuxHealthCard({
           --no-sandbox launch needed unless capture still fails (then set EW_NO_SANDBOX=1).
         </p>
       ) : null}
+      <p className="linux-health__hint muted" style={{ marginTop: 10 }}>
+        OCR tip (Proton): Borderless Windowed, Settings → Game/OCR monitor = Warframe’s screen,
+        leave the PipeWire share on that same monitor. Force Relic UI theme / 3-player slots if
+        names look wrong.
+      </p>
     </section>
   )
 }

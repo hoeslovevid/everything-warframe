@@ -51,6 +51,11 @@ function settingsPath() {
   return path.join(app.getPath('userData'), 'voidlens-settings.json')
 }
 
+/** Absolute path to the on-disk settings file (for cloud sync mtime checks). */
+export function getSettingsFilePath() {
+  return settingsPath()
+}
+
 function clampOpacity(value: unknown, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
   return Math.min(1, Math.max(0.4, value))
@@ -433,8 +438,11 @@ function mergeSettings(raw: Partial<AppSettings> | null | undefined): AppSetting
       typeof (raw as { gamePerformanceMode?: boolean }).gamePerformanceMode === 'boolean'
         ? (raw as { gamePerformanceMode: boolean }).gamePerformanceMode
         : base.gamePerformanceMode,
-    ocrPoolSize:
-      (raw as { ocrPoolSize?: number }).ocrPoolSize === 2 ? 2 : 1,
+    ocrPoolSize: (() => {
+      const v = (raw as { ocrPoolSize?: number }).ocrPoolSize
+      if (v === 2 || v === 1) return v
+      return base.ocrPoolSize
+    })(),
     overlayTightBounds:
       typeof (raw as { overlayTightBounds?: boolean }).overlayTightBounds === 'boolean'
         ? (raw as { overlayTightBounds: boolean }).overlayTightBounds
@@ -447,6 +455,14 @@ function mergeSettings(raw: Partial<AppSettings> | null | undefined): AppSetting
       typeof (raw as { crashReportingConsent?: boolean }).crashReportingConsent === 'boolean'
         ? (raw as { crashReportingConsent: boolean }).crashReportingConsent
         : base.crashReportingConsent,
+    settingsCloudSyncPath:
+      typeof (raw as { settingsCloudSyncPath?: string }).settingsCloudSyncPath === 'string'
+        ? (raw as { settingsCloudSyncPath: string }).settingsCloudSyncPath.trim()
+        : base.settingsCloudSyncPath,
+    settingsCloudSyncAuto:
+      typeof (raw as { settingsCloudSyncAuto?: boolean }).settingsCloudSyncAuto === 'boolean'
+        ? (raw as { settingsCloudSyncAuto: boolean }).settingsCloudSyncAuto
+        : base.settingsCloudSyncAuto,
     navCollapsed: raw.navCollapsed ?? base.navCollapsed,
     overlayOnlyInWarframe:
       typeof (raw as { overlayOnlyInWarframe?: boolean }).overlayOnlyInWarframe === 'boolean'

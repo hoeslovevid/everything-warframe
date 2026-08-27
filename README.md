@@ -35,7 +35,13 @@ npm install
 npm start
 ```
 
-**Windows / OneDrive:** This repo’s Vite cache lives in the OS temp folder (`vite-everything-warframe`), not under `node_modules/.vite`, to avoid `EPERM` when OneDrive locks files. If `npm start` still fails on a stale `.vite` folder, delete `node_modules/.vite` once and retry.
+**Windows / OneDrive:** Prefer day-to-day dev outside OneDrive sync:
+
+```powershell
+npm run dev:local
+```
+
+That copies the repo to `%LOCALAPPDATA%\EverythingWarframe-dev` and runs `npm start` there (avoids sync locks on `node_modules` / Vite). Vite’s cache already lives in the OS temp folder (`vite-everything-warframe`). If `npm start` still fails on a stale `.vite` folder inside the repo, delete `node_modules/.vite` once and retry.
 
 This launches Vite, builds the Electron main/preload bundles, then opens:
 

@@ -164,6 +164,55 @@ export function detectUiTheme(png: Buffer): WfThemeId {
   return winner
 }
 
+/** Top-N theme votes (highest weight first) — used for OCR fallback retries. */
+export function rankUiThemes(png: Buffer, topN = 3): WfThemeId[] {
+  const img = nativeImage.createFromBuffer(png)
+  const { width, height } = img.getSize()
+  if (width < 64 || height < 64) return ['Lotus']
+
+  const bitmap = img.toBitmap()
+  const weights = new Map<WfThemeId, number>()
+  for (const id of THEME_IDS) weights.set(id, 0)
+
+  const screenScaling = width * 9 > height * 16 ? height / 1080 : width / 1920
+  const lineHeight = (48 / 2) * screenScaling
+  const mostWidth = 968 * screenScaling
+  const minWidth = mostWidth / 4
+
+  const stepY = Math.max(2, Math.round(height / 180))
+  const stepX = Math.max(2, Math.round(width / 320))
+
+  for (let y = Math.round(lineHeight); y < height; y += stepY) {
+    const perc = (y - lineHeight) / Math.max(1, height - lineHeight)
+    const totalWidth = minWidth * perc + minWidth
+    const x0 = Math.max(0, Math.round((mostWidth - totalWidth) / 2))
+    const x1 = Math.min(width - 1, Math.round(x0 + totalWidth))
+    for (let x = x0; x < x1; x += stepX) {
+      const i = (y * width + x) * 4
+      const b = bitmap[i]
+      const g = bitmap[i + 1]
+      const r = bitmap[i + 2]
+      let best: WfThemeId = 'Lotus'
+      let bestD = Infinity
+      for (const id of THEME_IDS) {
+        const d = Math.min(
+          rgbDist([r, g, b], THEME_COLORS[id].primary),
+          rgbDist([r, g, b], THEME_COLORS[id].secondary),
+        )
+        if (d < bestD) {
+          bestD = d
+          best = id
+        }
+      }
+      weights.set(best, (weights.get(best) || 0) + 1 / Math.pow(1 + bestD / 255, 4))
+    }
+  }
+
+  return [...THEME_IDS]
+    .sort((a, b) => (weights.get(b) || 0) - (weights.get(a) || 0))
+    .slice(0, Math.max(1, topN))
+}
+
 /**
  * WFInfo-style filter: theme text → black, everything else → white.
  * Falls back to bright-luminance isolation when too few theme pixels survive

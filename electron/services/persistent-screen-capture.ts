@@ -66,7 +66,7 @@ const CAPTURE_PAGE = `<!DOCTYPE html>
     canvas.height = h
     const ctx = canvas.getContext('2d', { alpha: false })
     ctx.drawImage(video, 0, 0, w, h)
-    const dataUrl = canvas.toDataURL('image/png')
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92)
     return { dataUrl, width: w, height: h }
   }
 

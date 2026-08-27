@@ -8,7 +8,7 @@ import { lookupMarketPrices } from './market-prices'
 import { recognizeRewardNames, warmupOcr } from './ocr'
 import { waitForOcrUiReady } from './ocr-readiness'
 import { captureRewardRegionVariants, cropRelicBandsFromPng } from './screen-capture'
-import { detectRewardPlayerCount, detectUiTheme, type WfThemeId } from './wfinfo-theme'
+import { detectRewardPlayerCount, detectUiTheme, rankUiThemes, type WfThemeId } from './wfinfo-theme'
 import { ensureWfinfoPrices, lookupWfinfoPrices } from './wfinfo-prices'
 import { loadSettings } from '../settings'
 import { recordRelicHaul } from './session-haul'
@@ -275,6 +275,7 @@ export async function scanRelicRewards(
 
   const squadSize = pendingSquadSize
   let lastMeta: RelicScanState['scanMeta'] = state.scanMeta
+  let lastFullPng: Buffer | null = null
   state = {
     ...state,
     scanning: true,
@@ -306,6 +307,7 @@ export async function scanRelicRewards(
 
     const buildRewards = async (
       saveDebugOnWeak = false,
+      themeForce?: WfThemeId | null,
     ): Promise<RewardEval[]> => {
       const capture = await captureRewardRegionVariants()
       if (!capture || capture.bands.length < 4) {
@@ -316,15 +318,17 @@ export async function scanRelicRewards(
         )
       }
 
-      // WFInfo-style: theme override → last confident → auto-detect.
+      // WFInfo-style: explicit force → settings override → last confident → auto-detect.
       const settings = loadSettings()
       const theme: WfThemeId =
+        themeForce ??
         settings.wfThemeOverride ??
         lastConfidentTheme ??
         detectUiTheme(capture.fullPng)
       console.info(`[Everything Warframe] Relic UI theme ≈ ${theme}`)
 
       // Squad size: settings override → EE.log → last confident → image detect.
+      // Prefer EE.log / override so 3-player crops don't get stretched to 4.
       let slotHint =
         settings.relicSquadSizeOverride ??
         squadSize ??
@@ -426,6 +430,7 @@ export async function scanRelicRewards(
         trimmedTo: trimTo,
         formaSlots: next.filter((r) => isFormaReward(r)).length,
       }
+      lastFullPng = capture.fullPng
       return next
     }
 
@@ -436,9 +441,23 @@ export async function scanRelicRewards(
     // Proton log flush / UI paint can lag — one retry when the first pass is empty.
     if (!useful) {
       console.info('[Everything Warframe] Relic OCR weak — retrying capture…')
-      await new Promise((r) => setTimeout(r, process.platform === 'linux' ? 700 : 400))
+      await new Promise((r) => setTimeout(r, process.platform === 'linux' ? 400 : 150))
       rewards = await buildRewards(true)
       useful = rewards.some((r) => r.matchScore >= 0.45)
+    }
+
+    // Theme mis-detect: try runner-up UI themes once (skip when user forced a theme).
+    if (!useful && !loadSettings().wfThemeOverride) {
+      const tried = new Set<string>([lastMeta?.theme || ''].filter(Boolean))
+      const alts = lastFullPng
+        ? rankUiThemes(lastFullPng, 3).filter((t) => !tried.has(t))
+        : WF_THEME_IDS.filter((t) => !tried.has(t)).slice(0, 2)
+      for (const alt of alts.slice(0, 2)) {
+        console.info(`[Everything Warframe] Relic OCR weak — trying theme ${alt}…`)
+        rewards = await buildRewards(false, alt)
+        useful = rewards.some((r) => r.matchScore >= 0.45)
+        if (useful) break
+      }
     }
 
     if (!useful) {

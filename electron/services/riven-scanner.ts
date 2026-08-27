@@ -120,14 +120,10 @@ export async function scanRivens(trigger: 'manual' | 'log' = 'manual'): Promise<
   emit()
 
   try {
-    // Warm persistent capture while the compositor settles — avoids a cold
-    // desktopCapturer full-res thumb on the critical path.
-    await Promise.all([
-      new Promise<void>((r) => setTimeout(r, 50)),
-      isPersistentCaptureLive()
-        ? Promise.resolve(true)
-        : ensurePersistentCapture().catch(() => false),
-    ])
+    // Warm persistent capture when cold — no artificial settle when already live.
+    if (!isPersistentCaptureLive()) {
+      await ensurePersistentCapture().catch(() => false)
+    }
 
     if (trigger === 'log') {
       // Poll until Cycle cards look painted (cap = old fixed animation delay).
@@ -208,7 +204,7 @@ export async function scanRivens(trigger: 'manual' | 'log' = 'manual'): Promise<
 
     // Retry capture when still weak — common while Cycle UI is animating.
     if (weakRead) {
-      const retryDelay = process.platform === 'linux' ? 600 : 400
+      const retryDelay = process.platform === 'linux' ? 350 : 150
       await new Promise((r) => setTimeout(r, retryDelay))
       const retry = await captureRivenCompare()
       if (retry && retry.crops.length >= 2) {

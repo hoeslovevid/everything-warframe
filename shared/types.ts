@@ -554,6 +554,13 @@ export type AppSettings = {
    * and a prompt can open a prefilled GitHub issue on next launch.
    */
   crashReportingConsent: boolean
+  /**
+   * Folder for cloud / multi-PC settings sync (Dropbox, OneDrive, etc.).
+   * Empty = disabled. Writes everything-warframe-settings.json into that folder.
+   */
+  settingsCloudSyncPath: string
+  /** Auto-pull newer cloud settings on launch (when path is set). */
+  settingsCloudSyncAuto: boolean
   /** Collapse companion sidebar to icon-only. */
   navCollapsed: boolean
   /** Auto-resync inventory while Warframe is running. */
@@ -808,10 +815,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   quietFocusActive: false,
   quietFocusModulesBackup: null,
   gamePerformanceMode: true,
-  ocrPoolSize: 1,
+  ocrPoolSize: 2,
   overlayTightBounds: true,
-  overlayRewardHudOnly: false,
+  overlayRewardHudOnly: true,
   crashReportingConsent: false,
+  settingsCloudSyncPath: '',
+  settingsCloudSyncAuto: true,
   navCollapsed: false,
   inventoryAutoSync: true,
   inventoryRemindWhenRunning: true,
@@ -1989,6 +1998,12 @@ export type VoidLensApi = {
   getUninstallInfo: () => Promise<UninstallInfo>
   exportSettings: () => Promise<{ ok: boolean; path?: string; error?: string }>
   importSettings: () => Promise<{ ok: boolean; error?: string }>
+  pickCloudSyncFolder: () => Promise<{ ok: boolean; path?: string; error?: string }>
+  clearCloudSyncPath: () => Promise<{ ok: boolean }>
+  pushCloudSettings: () => Promise<{ ok: boolean; error?: string }>
+  pullCloudSettings: (
+    force?: boolean,
+  ) => Promise<{ ok: boolean; imported?: boolean; error?: string; path?: string }>
   launchUninstaller: () => Promise<{ ok: boolean; error?: string }>
   openWindowsAppsSettings: () => Promise<{ ok: boolean; error?: string }>
   openUserDataFolder: () => Promise<{ ok: boolean; error?: string }>

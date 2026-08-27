@@ -114,7 +114,8 @@ function scoreRivenFrame(png: Buffer, width: number, height: number): number {
 }
 
 const READY_THRESHOLD = 0.42
-const STABLE_HITS = 2
+/** One confident frame is enough — retry path covers false starts. */
+const STABLE_HITS = 1
 
 /**
  * Poll the screen until the target UI looks painted, or maxMs elapses.
@@ -128,14 +129,14 @@ export async function waitForOcrUiReady(
   const defaults =
     kind === 'relic'
       ? {
-          minMs: linux ? 220 : 100,
-          maxMs: linux ? 900 : 450,
-          intervalMs: 80,
+          minMs: linux ? 120 : 50,
+          maxMs: linux ? 800 : 400,
+          intervalMs: 60,
         }
       : {
-          minMs: linux ? 400 : 250,
-          maxMs: linux ? 2200 : 1400,
-          intervalMs: 100,
+          minMs: linux ? 200 : 120,
+          maxMs: linux ? 1800 : 1000,
+          intervalMs: 80,
         }
   const minMs = opts.minMs ?? defaults.minMs
   const maxMs = opts.maxMs ?? defaults.maxMs

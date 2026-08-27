@@ -1726,7 +1726,8 @@ export function CompanionApp() {
                       ))}
                     </select>
                     <p className="muted" style={{ margin: '6px 0 0', fontSize: '0.78rem' }}>
-                      Force your Warframe UI theme if auto-detect mis-reads reward names.
+                      Force your Warframe UI theme if auto-detect mis-reads reward names. Weak scans
+                      also try runner-up themes automatically when set to Auto.
                     </p>
                   </div>
                   <div className="field">
@@ -1751,7 +1752,8 @@ export function CompanionApp() {
                       <option value="3">3 players</option>
                     </select>
                     <p className="muted" style={{ margin: '6px 0 0', fontSize: '0.78rem' }}>
-                      Use 3 when running with a squad of three so OCR crops line up.
+                      Use 3 when running with a squad of three so OCR crops line up. Auto prefers
+                      EE.log squad size when available.
                     </p>
                   </div>
                   <div className="field">
@@ -1827,7 +1829,7 @@ export function CompanionApp() {
                     />
                     <ToggleRow
                       label="Game performance mode"
-                      description="Less lag vs Warframe: defer OCR warmup, release screen capture when idle, slower countdown clock, pause inventory sync while OCR runs"
+                      description="Less lag vs Warframe (recommended): defer OCR warmup, release screen capture when idle, slower countdown clock, pause inventory sync while OCR runs"
                       checked={settings.gamePerformanceMode}
                       onChange={(enabled) => void updateSettings({ gamePerformanceMode: enabled })}
                     />
@@ -1839,13 +1841,13 @@ export function CompanionApp() {
                     />
                     <ToggleRow
                       label="Reward-screen HUD only"
-                      description="In-mission: hide worldstate panels until a relic/riven OCR screen is active (fissures + mission strip stay)"
+                      description="In-mission: hide worldstate panels until a relic/riven OCR screen is active (fissures + mission strip stay). On by default with game performance mode."
                       checked={settings.overlayRewardHudOnly}
                       onChange={(enabled) => void updateSettings({ overlayRewardHudOnly: enabled })}
                     />
                     <ToggleRow
                       label="Dual OCR workers"
-                      description="Faster multi-slot relic reads; uses more CPU/GPU. Restart app after changing."
+                      description="On by default — faster multi-slot relic/riven reads (restart app after changing). Turn off on low-end CPUs."
                       checked={settings.ocrPoolSize === 2}
                       onChange={(enabled) =>
                         void updateSettings({ ocrPoolSize: enabled ? 2 : 1 })
@@ -1933,6 +1935,81 @@ export function CompanionApp() {
                       >
                         Import settings
                       </button>
+                    </div>
+                    <div className="field" style={{ marginTop: 14 }}>
+                      <label>Cloud settings sync</label>
+                      <p className="muted" style={{ margin: '0 0 8px', fontSize: '0.78rem' }}>
+                        Point both PCs at the same Dropbox / OneDrive / Google Drive folder. Writes{' '}
+                        <code>everything-warframe-settings.json</code> (no WFM JWT). Pulls newer
+                        cloud file on launch when Auto pull is on.
+                      </p>
+                      <p className="muted" style={{ margin: '0 0 8px', fontSize: '0.78rem' }}>
+                        {settings.settingsCloudSyncPath
+                          ? settings.settingsCloudSyncPath
+                          : 'No folder selected'}
+                      </p>
+                      <ToggleRow
+                        label="Auto-pull on launch"
+                        description="Import cloud settings when that file is newer than this PC"
+                        checked={settings.settingsCloudSyncAuto}
+                        onChange={(enabled) =>
+                          void updateSettings({ settingsCloudSyncAuto: enabled })
+                        }
+                      />
+                      <div className="toolbar" style={{ marginTop: 4, gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="btn primary"
+                          onClick={() =>
+                            void window.voidlens?.pickCloudSyncFolder?.().then((r) => {
+                              if (r.ok) pushToast('Cloud sync folder set + pushed', 'ok')
+                              else if (r.error && r.error !== 'cancelled')
+                                pushToast(r.error, 'error')
+                            })
+                          }
+                        >
+                          Choose folder
+                        </button>
+                        <button
+                          type="button"
+                          className="btn ghost"
+                          disabled={!settings.settingsCloudSyncPath}
+                          onClick={() =>
+                            void window.voidlens?.pushCloudSettings?.().then((r) => {
+                              if (r.ok) pushToast('Settings pushed to cloud', 'ok')
+                              else if (r.error) pushToast(r.error, 'error')
+                            })
+                          }
+                        >
+                          Push now
+                        </button>
+                        <button
+                          type="button"
+                          className="btn ghost"
+                          disabled={!settings.settingsCloudSyncPath}
+                          onClick={() =>
+                            void window.voidlens?.pullCloudSettings?.(true).then((r) => {
+                              if (r.ok && r.imported) pushToast('Settings pulled from cloud', 'ok')
+                              else if (r.ok) pushToast('Cloud file is not newer', 'ok')
+                              else if (r.error) pushToast(r.error, 'error')
+                            })
+                          }
+                        >
+                          Pull now
+                        </button>
+                        <button
+                          type="button"
+                          className="btn ghost"
+                          disabled={!settings.settingsCloudSyncPath}
+                          onClick={() =>
+                            void window.voidlens?.clearCloudSyncPath?.().then(() => {
+                              pushToast('Cloud sync cleared', 'ok')
+                            })
+                          }
+                        >
+                          Clear
+                        </button>
+                      </div>
                     </div>
                     <button
                       type="button"

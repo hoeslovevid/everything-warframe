@@ -56,7 +56,7 @@ const CAPTURE_PAGE = `<!DOCTYPE html>
     return true
   }
 
-  async function grabFrame() {
+  async function grabFrame(opts) {
     await ensureStream()
     if (!video || !canvas) throw new Error('capture stream not ready')
     const w = video.videoWidth
@@ -66,7 +66,11 @@ const CAPTURE_PAGE = `<!DOCTYPE html>
     canvas.height = h
     const ctx = canvas.getContext('2d', { alpha: false })
     ctx.drawImage(video, 0, 0, w, h)
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.92)
+    // PNG for OCR (sharp text); JPEG only for cheap readiness polls.
+    const wantPng = opts && opts.format === 'png'
+    const dataUrl = wantPng
+      ? canvas.toDataURL('image/png')
+      : canvas.toDataURL('image/jpeg', 0.92)
     return { dataUrl, width: w, height: h }
   }
 
@@ -299,13 +303,17 @@ export function cancelPersistentCaptureIdleRelease() {
 }
 
 /** Grab one full-desktop frame from the live stream (no new permission prompt). */
-export async function grabPersistentFrame(): Promise<FrameResult | null> {
+export async function grabPersistentFrame(opts?: {
+  /** PNG for OCR accuracy; JPEG (default) for readiness polls. */
+  format?: 'png' | 'jpeg'
+}): Promise<FrameResult | null> {
   cancelPersistentCaptureIdleRelease()
   const ok = await ensurePersistentCapture()
   if (!ok) return null
   try {
+    const format = opts?.format === 'png' ? 'png' : 'jpeg'
     const frame = await exec<{ dataUrl: string; width: number; height: number }>(
-      'window.__ewCapture.grabFrame()',
+      `window.__ewCapture.grabFrame(${JSON.stringify({ format })})`,
     )
     if (!frame?.dataUrl) return null
     const b64 = frame.dataUrl.replace(/^data:image\/\w+;base64,/, '')

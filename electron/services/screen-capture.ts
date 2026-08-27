@@ -141,7 +141,8 @@ async function captureDisplay(display: Electron.Display): Promise<{
 } | null> {
   // Persistent stream is much faster than full-res desktopCapturer thumbs,
   // especially on Windows multi-monitor / 4K. Auto-picks screen via handler.
-  const persistent = await grabPersistentFrame()
+  // PNG keeps reward-name glyphs sharp for OCR (JPEG 0.92 smeared small crops).
+  const persistent = await grabPersistentFrame({ format: 'png' })
   if (persistent?.png?.length) {
     console.info(
       `[Everything Warframe] Capture via persistent stream ${persistent.width}×${persistent.height}`,

@@ -161,7 +161,9 @@ export function defaultRivenAnchor(
 /**
  * Four reward-name bands on a typical fissure pick screen.
  * Geometry follows WFInfo / wfinfo-ng PIXEL_REWARD_* constants (scaled to
- * 1920×1080 reference), which targets the name line under item art.
+ * 1920×1080 reference). The name line sits near `mostTop` (below item art,
+ * above player names) — do not add a full reward-box height or crops land in
+ * empty space under the strip (regression seen on 1440p end-of-mission).
  */
 export function relicRewardRegions(
   width: number,
@@ -175,9 +177,10 @@ export function relicRewardRegions(
   const mostTop =
     height / 2 -
     (316 - 235 + 48) * screenScaling
-  // Name band ≈ lower third of the reward box (below art).
-  const y = mostTop + (235 * screenScaling - lineHeight * 1.35)
-  const h = lineHeight * 2.2
+  // Name band starts just below mostTop (art / Owned tags sit above).
+  // Keep height under the rarity divider so player names don't pollute OCR.
+  const y = mostTop + lineHeight * 0.4
+  const h = lineHeight * 1.45
   const cardW = mostWidth / slots
   const startX = width / 2 - mostWidth / 2
 
@@ -199,8 +202,9 @@ export function relicRewardRegionVariants(
   slots: 3 | 4 = 4,
 ): CaptureRegion[][] {
   const primary = relicRewardRegions(width, height, slots)
-  const deltas = [-0.04, 0, 0.035]
-  const bandH = Math.round(height * 0.12)
+  // Wider vertical search for UI scale / aspect quirks (still near the name line).
+  const deltas = [-0.045, -0.015, 0.02]
+  const bandH = Math.round(height * 0.08)
   return primary.map((base) =>
     deltas.map((dy) => ({
       x: base.x,
@@ -272,10 +276,10 @@ export function resolveRelicRewardRegionVariants(
 ): CaptureRegion[][] {
   const primary = resolveRelicRewardRegions(width, height, slots, customStrip)
   // Smaller vertical search when the user already tuned the strip.
-  const deltas = customStrip ? [-0.015, 0, 0.015] : [-0.04, 0, 0.035]
+  const deltas = customStrip ? [-0.015, 0, 0.015] : [-0.045, -0.015, 0.02]
   const bandH = customStrip
     ? Math.max(primary[0]?.height ?? Math.round(height * 0.06), Math.round(height * 0.05))
-    : Math.round(height * 0.12)
+    : Math.round(height * 0.08)
   return primary.map((base) =>
     deltas.map((dy) => ({
       x: base.x,

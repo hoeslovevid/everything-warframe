@@ -363,6 +363,11 @@ export const WHATS_NEW: Record<string, string[]> = {
     'Cloud settings sync: Dropbox/OneDrive/Google Drive folder (auto pull on launch)',
     'OneDrive-safe day-to-day dev: npm run dev:local → %LOCALAPPDATA%\\EverythingWarframe-dev',
   ],
+  '0.9.80': [
+    'Fix relic OCR missing reward names on 1440p (and similar) end-of-mission screens (#9)',
+    'Recalibrated name-band crop Y so OCR hits item labels, not empty space under the strip',
+    'OCR captures use PNG again for sharper relic/riven crops',
+  ],
 }
 
 export function getWhatsNewBullets(version: string): string[] {

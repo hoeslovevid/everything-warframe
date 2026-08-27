@@ -177,10 +177,10 @@ export function relicRewardRegions(
   const mostTop =
     height / 2 -
     (316 - 235 + 48) * screenScaling
-  // Name band starts just below mostTop (art / Owned tags sit above).
-  // Keep height under the rarity divider so player names don't pollute OCR.
-  const y = mostTop + lineHeight * 0.4
-  const h = lineHeight * 1.45
+  // Name band starts near mostTop (art / Owned tags sit above).
+  // Tall enough for two-line names ("Akbronco Prime" / "Blueprint").
+  const y = mostTop + lineHeight * 0.15
+  const h = lineHeight * 1.75
   const cardW = mostWidth / slots
   const startX = width / 2 - mostWidth / 2
 
@@ -250,6 +250,11 @@ export function defaultRivenCardNorms(
 /**
  * Effective relic name-band crops: custom strip (subdivided into slots) or
  * built-in WFInfo geometry.
+ *
+ * Layout-editor strips are often drawn over whole reward cards. OCR only needs
+ * the name line — a tall full-card strip feeds art/chat/"Close" into Paddle and
+ * fails (especially on 3-player screens). Tall custom strips fall back to
+ * built-in geometry; thin name-band strips are still respected.
  */
 export function resolveRelicRewardRegions(
   width: number,
@@ -259,6 +264,10 @@ export function resolveRelicRewardRegions(
 ): CaptureRegion[] {
   if (!customStrip) return relicRewardRegions(width, height, slots)
   const strip = normToRegion(customStrip, width, height)
+  // Card-tall Layout guides are not usable OCR name bands.
+  if (strip.height > height * 0.14) {
+    return relicRewardRegions(width, height, slots)
+  }
   const cardW = strip.width / slots
   return Array.from({ length: slots }, (_, i) => ({
     x: Math.round(strip.x + i * cardW),
@@ -274,18 +283,23 @@ export function resolveRelicRewardRegionVariants(
   slots: 3 | 4 = 4,
   customStrip?: OcrRegionNorm | null,
 ): CaptureRegion[][] {
-  const primary = resolveRelicRewardRegions(width, height, slots, customStrip)
-  // Smaller vertical search when the user already tuned the strip.
-  const deltas = customStrip ? [-0.015, 0, 0.015] : [-0.045, -0.015, 0.02]
-  const bandH = customStrip
-    ? Math.max(primary[0]?.height ?? Math.round(height * 0.06), Math.round(height * 0.05))
-    : Math.round(height * 0.08)
+  // Same tall-strip guard as resolveRelicRewardRegions.
+  const effectiveCustom =
+    customStrip && normToRegion(customStrip, width, height).height > height * 0.14
+      ? null
+      : customStrip
+  const primary = resolveRelicRewardRegions(width, height, slots, effectiveCustom)
+  const deltas = effectiveCustom ? [-0.02, 0, 0.02] : [-0.045, -0.015, 0.02]
+  const bandH = Math.max(
+    primary[0]?.height ?? Math.round(height * 0.05),
+    Math.round(height * 0.05),
+  )
   return primary.map((base) =>
     deltas.map((dy) => ({
       x: base.x,
       y: Math.max(0, Math.min(height - bandH, Math.round(base.y + height * dy))),
       width: base.width,
-      height: customStrip ? Math.max(base.height, Math.round(height * 0.04)) : bandH,
+      height: bandH,
     })),
   )
 }

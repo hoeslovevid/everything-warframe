@@ -9,6 +9,7 @@ import {
   rivenCompareRegions,
   type CaptureRegion,
 } from '../../shared/captureGeometry'
+import type { OcrRegionNorm } from '../../shared/types'
 import { loadSettings } from '../settings'
 import { resolveOcrDisplay } from './display-target'
 import {
@@ -212,8 +213,11 @@ export function cropRelicBandsFromPng(
   width: number,
   height: number,
   slots: 3 | 4,
+  /** Pass `null` to force built-in geometry; omit to use Settings custom strip. */
+  customStrip?: OcrRegionNorm | null,
 ): Buffer[][] {
-  const custom = activeOcrScanRegions().relicStrip
+  const custom =
+    customStrip === undefined ? activeOcrScanRegions().relicStrip : customStrip
   const variants = resolveRelicRewardRegionVariants(width, height, slots, custom)
   return variants.map((regions) => regions.map((region) => cropPng(fullPng, region)))
 }
@@ -238,7 +242,10 @@ export async function captureRewardRegionPngs(): Promise<Buffer[]> {
 }
 
 /** Each slot → several vertical band crops (for best-of OCR). */
-export async function captureRewardRegionVariants(): Promise<{
+export async function captureRewardRegionVariants(opts?: {
+  ignoreCustomStrip?: boolean
+  slots?: 3 | 4
+}): Promise<{
   bands: Buffer[][]
   fullPng: Buffer
   width: number
@@ -248,17 +255,18 @@ export async function captureRewardRegionVariants(): Promise<{
     invalidateCaptureCache()
     const shot = await captureBestDisplay()
     if (!shot) return null
-    const custom = activeOcrScanRegions().relicStrip
+    const custom = opts?.ignoreCustomStrip ? null : activeOcrScanRegions().relicStrip
+    const slots = opts?.slots === 3 ? 3 : 4
     const variants = resolveRelicRewardRegionVariants(
       shot.width,
       shot.height,
-      4,
+      slots,
       custom,
     )
     console.info(
       `[Everything Warframe] Relic variant crops ${shot.width}×${shot.height}` +
-        (custom ? ' (custom strip)' : '') +
-        ': ' +
+        (custom ? ' (custom strip)' : ' (built-in)') +
+        ` slots=${slots}: ` +
         variants
           .map(
             (bands, i) =>

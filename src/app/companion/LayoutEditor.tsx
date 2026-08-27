@@ -241,7 +241,7 @@ export function LayoutEditor({
         />
         <ToggleRow
           label="Edit OCR scan areas"
-          description="Show Relic name-band and Riven card crops on the mock monitor. Drag/resize to match your game UI scale."
+          description="Show Relic name-band and Riven card crops. Keep the Relic box thin over item names only (not the whole cards) — tall boxes are ignored for OCR."
           checked={editOcrAreas}
           onChange={setEditOcrAreas}
         />

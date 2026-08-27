@@ -276,6 +276,7 @@ export async function scanRelicRewards(
   const squadSize = pendingSquadSize
   let lastMeta: RelicScanState['scanMeta'] = state.scanMeta
   let lastFullPng: Buffer | null = null
+  let lastCaptureSize: { width: number; height: number } | null = null
   state = {
     ...state,
     scanning: true,
@@ -308,9 +309,44 @@ export async function scanRelicRewards(
     const buildRewards = async (
       saveDebugOnWeak = false,
       themeForce?: WfThemeId | null,
+      opts?: { ignoreCustomStrip?: boolean },
     ): Promise<RewardEval[]> => {
-      const capture = await captureRewardRegionVariants()
-      if (!capture || capture.bands.length < 4) {
+      const settings = loadSettings()
+      const ignoreCustom = Boolean(opts?.ignoreCustomStrip)
+
+      let capture: {
+        bands: Buffer[][]
+        fullPng: Buffer
+        width: number
+        height: number
+      } | null = null
+
+      if (ignoreCustom && lastFullPng && lastCaptureSize) {
+        const slotGuess =
+          settings.relicSquadSizeOverride ?? squadSize ?? lastConfidentSlots ?? 4
+        const slots: 3 | 4 = slotGuess === 3 ? 3 : 4
+        capture = {
+          bands: cropRelicBandsFromPng(
+            lastFullPng,
+            lastCaptureSize.width,
+            lastCaptureSize.height,
+            slots,
+            null,
+          ),
+          fullPng: lastFullPng,
+          width: lastCaptureSize.width,
+          height: lastCaptureSize.height,
+        }
+        console.info(
+          `[Everything Warframe] Relic OCR fallback → built-in geometry, slots=${slots}`,
+        )
+      } else {
+        capture = await captureRewardRegionVariants({
+          ignoreCustomStrip: ignoreCustom,
+        })
+      }
+
+      if (!capture || capture.bands.length < 3) {
         throw new Error(
           process.platform === 'linux'
             ? 'Could not capture the reward screen. Allow screen share once and use Borderless Windowed.'
@@ -319,7 +355,6 @@ export async function scanRelicRewards(
       }
 
       // WFInfo-style: explicit force → settings override → last confident → auto-detect.
-      const settings = loadSettings()
       const theme: WfThemeId =
         themeForce ??
         settings.wfThemeOverride ??
@@ -340,7 +375,13 @@ export async function scanRelicRewards(
       // Re-crop for 3-player reward layouts (same strip width, 3 cards).
       const bands =
         slotHint === 3
-          ? cropRelicBandsFromPng(capture.fullPng, capture.width, capture.height, 3)
+          ? cropRelicBandsFromPng(
+              capture.fullPng,
+              capture.width,
+              capture.height,
+              3,
+              ignoreCustom ? null : undefined,
+            )
           : capture.bands
 
       // OCR all slots in parallel (primary band first per slot).
@@ -431,6 +472,7 @@ export async function scanRelicRewards(
         formaSlots: next.filter((r) => isFormaReward(r)).length,
       }
       lastFullPng = capture.fullPng
+      lastCaptureSize = { width: capture.width, height: capture.height }
       return next
     }
 
@@ -446,6 +488,15 @@ export async function scanRelicRewards(
       useful = rewards.some((r) => r.matchScore >= 0.45)
     }
 
+    // Custom Layout OCR strip often covers whole cards / wrong slots — fall back.
+    if (!useful && loadSettings().ocrScanRegions.relicStrip && lastFullPng) {
+      console.info(
+        '[Everything Warframe] Relic OCR weak with custom strip — trying built-in geometry…',
+      )
+      rewards = await buildRewards(true, null, { ignoreCustomStrip: true })
+      useful = rewards.some((r) => r.matchScore >= 0.45)
+    }
+
     // Theme mis-detect: try runner-up UI themes once (skip when user forced a theme).
     if (!useful && !loadSettings().wfThemeOverride) {
       const tried = new Set<string>([lastMeta?.theme || ''].filter(Boolean))
@@ -454,7 +505,9 @@ export async function scanRelicRewards(
         : WF_THEME_IDS.filter((t) => !tried.has(t)).slice(0, 2)
       for (const alt of alts.slice(0, 2)) {
         console.info(`[Everything Warframe] Relic OCR weak — trying theme ${alt}…`)
-        rewards = await buildRewards(false, alt)
+        rewards = await buildRewards(false, alt, {
+          ignoreCustomStrip: Boolean(loadSettings().ocrScanRegions.relicStrip),
+        })
         useful = rewards.some((r) => r.matchScore >= 0.45)
         if (useful) break
       }
@@ -469,9 +522,13 @@ export async function scanRelicRewards(
         lastMeta?.theme
           ? ` Detected UI theme “${lastMeta.theme}” — force Relic UI theme in Settings if names look wrong.`
           : ' Try forcing Relic UI theme or reward slots (3 vs 4) in Settings.'
+      const customHint = loadSettings().ocrScanRegions.relicStrip
+        ? ' Custom Layout OCR strip may be wrong — use Layout → Reset OCR regions.'
+        : ''
       throw new Error(
         'No reward names detected. Open the fissure pick screen, then scan again.' +
           themeHint +
+          customHint +
           multi,
       )
     }

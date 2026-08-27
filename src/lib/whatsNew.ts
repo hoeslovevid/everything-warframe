@@ -368,6 +368,11 @@ export const WHATS_NEW: Record<string, string[]> = {
     'Recalibrated name-band crop Y so OCR hits item labels, not empty space under the strip',
     'OCR captures use PNG again for sharper relic/riven crops',
   ],
+  '0.9.81': [
+    'Fix relic OCR still failing when a tall custom Layout OCR strip overrides name crops (#9)',
+    'Ignore card-tall Relic OCR boxes (use built-in geometry); weak scans also fall back',
+    'Layout tip: keep Relic OCR box thin over item names — Reset OCR areas clears a bad strip',
+  ],
 }
 
 export function getWhatsNewBullets(version: string): string[] {

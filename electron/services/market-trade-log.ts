@@ -1,5 +1,5 @@
 /**
- * Local market sold/bought log for simple plat P&L.
+ * Local market sold/bought log for simple plat P&L (all-time + this app session).
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -11,6 +11,7 @@ import type {
 } from '../../shared/types'
 
 const MAX_ENTRIES = 200
+const sessionStartedAt = new Date().toISOString()
 
 function logPath() {
   return path.join(app.getPath('userData'), 'market-trade-log.json')
@@ -39,16 +40,28 @@ function saveRaw(entries: MarketTradeEntry[]) {
 function summarize(entries: MarketTradeEntry[]): MarketTradeLogResult {
   let soldPlat = 0
   let boughtPlat = 0
+  let sessionSoldPlat = 0
+  let sessionBoughtPlat = 0
+  const sessionStartMs = Date.parse(sessionStartedAt) || 0
   for (const e of entries) {
     const total = Math.max(0, e.platinum) * Math.max(1, e.quantity)
     if (e.side === 'sell') soldPlat += total
     else boughtPlat += total
+    const at = Date.parse(e.at) || 0
+    if (at >= sessionStartMs) {
+      if (e.side === 'sell') sessionSoldPlat += total
+      else sessionBoughtPlat += total
+    }
   }
   return {
     entries,
     soldPlat,
     boughtPlat,
     netPlat: soldPlat - boughtPlat,
+    sessionStartedAt,
+    sessionSoldPlat,
+    sessionBoughtPlat,
+    sessionNetPlat: sessionSoldPlat - sessionBoughtPlat,
   }
 }
 

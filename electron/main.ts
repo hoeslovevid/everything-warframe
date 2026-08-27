@@ -105,6 +105,12 @@ import {
   openBugReport,
   pickBugScreenshots,
 } from './services/bug-report'
+import {
+  clearPendingCrash,
+  getPendingCrash,
+  installCrashReporting,
+  readCrashLogTail,
+} from './services/crash-reporting'
 import { fetchItemQuotes, fetchUndercutSuggestion } from './services/market'
 import { syncMarketBuyAlertsFromSettings } from './services/market-buy-alerts'
 import {
@@ -1613,6 +1619,12 @@ function registerIpc() {
   )
   ipcMain.handle('bugReport:pickScreenshots', async () => pickBugScreenshots())
   ipcMain.handle('bugReport:openDebugFolders', async () => openBugDebugFolders())
+  ipcMain.handle('crash:pending', () => getPendingCrash())
+  ipcMain.handle('crash:clearPending', () => {
+    clearPendingCrash()
+    return true
+  })
+  ipcMain.handle('crash:logTail', () => readCrashLogTail())
   ipcMain.handle('app:uninstallInfo', () => getUninstallInfo())
   ipcMain.handle('app:launchUninstaller', async () => launchUninstaller())
   ipcMain.handle('app:openWindowsAppsSettings', async () => openWindowsAppsSettings())
@@ -1688,6 +1700,7 @@ function registerIpc() {
 }
 
 app.whenReady().then(async () => {
+  installCrashReporting()
   registerIpc()
   setWidgetWorldstateProvider(() => worldstateCache)
 

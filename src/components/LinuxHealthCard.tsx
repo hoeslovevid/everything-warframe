@@ -37,7 +37,13 @@ export function LinuxHealthCard({
   onOpenCaptureWizard,
 }: Props) {
   const [captureMsg, setCaptureMsg] = useState<string | null>(null)
-  const [ptrace, setPtrace] = useState<PtraceInfo | null>(null)
+  const [health, setHealth] = useState<{
+    ptrace: PtraceInfo
+    steamRunning: boolean
+    wineLauncherFound: boolean
+    protonPrefix: string | null
+  } | null>(null)
+  const ptrace = health?.ptrace ?? null
   const isLinux =
     inventory?.platform === 'linux' ||
     (typeof navigator !== 'undefined' && /linux/i.test(navigator.userAgent))
@@ -47,12 +53,17 @@ export function LinuxHealthCard({
     try {
       const snap = await window.voidlens.getLinuxHealth()
       if (snap.platform !== 'linux') {
-        setPtrace(null)
+        setHealth(null)
         return
       }
-      setPtrace(snap.ptrace)
+      setHealth({
+        ptrace: snap.ptrace,
+        steamRunning: Boolean(snap.steamRunning),
+        wineLauncherFound: Boolean(snap.wineLauncherFound),
+        protonPrefix: snap.protonPrefix ?? null,
+      })
     } catch {
-      setPtrace(null)
+      setHealth(null)
     }
   }, [])
 
@@ -79,9 +90,26 @@ export function LinuxHealthCard({
         fixLabel: 'Detect',
       },
       {
+        label: 'Steam',
+        state: health?.steamRunning ? 'ok' : 'warn',
+        detail: health?.steamRunning ? 'running' : 'not detected',
+      },
+      {
+        label: 'Proton / Wine',
+        state: health?.wineLauncherFound || health?.protonPrefix ? 'ok' : 'warn',
+        detail: health?.protonPrefix
+          ? 'Warframe prefix found'
+          : health?.wineLauncherFound
+            ? 'Wine launcher found'
+            : 'launch Warframe via Steam once',
+      },
+      {
         label: 'Proton prefix',
-        state: inventory?.protonPlay ? 'ok' : 'warn',
-        detail: inventory?.protonPlay ? 'Warframe compatdata found' : 'launch Warframe via Steam once',
+        state: inventory?.protonPlay || health?.protonPrefix ? 'ok' : 'warn',
+        detail:
+          inventory?.protonPlay || health?.protonPrefix
+            ? 'Warframe compatdata found'
+            : 'launch Warframe via Steam once',
       },
       {
         label: 'Memory access',
@@ -99,12 +127,12 @@ export function LinuxHealthCard({
         state: inventory?.loaded ? (inventory.stale ? 'warn' : 'ok') : 'off',
         detail: inventory?.loaded
           ? inventory.stale
-            ? 'stale — sync while logged in'
-            : 'synced'
+            ? `stale${inventory.helperVersion ? ` · helper v${inventory.helperVersion}` : ''}`
+            : `synced${inventory.helperVersion ? ` · helper v${inventory.helperVersion}` : ''}`
           : inventory?.consent
             ? inventory?.error
               ? inventory.error.slice(0, 80)
-              : 'not synced'
+              : 'not synced — or import AlecaFrame'
             : 'consent needed',
         fix: inventory?.consent ? onSyncInventory : undefined,
         fixLabel: 'Sync',
@@ -127,6 +155,7 @@ export function LinuxHealthCard({
     inventory,
     captureMsg,
     ptrace,
+    health,
     onDetectEeLog,
     onSyncInventory,
     onOpenCaptureWizard,

@@ -348,6 +348,14 @@ export const WHATS_NEW: Record<string, string[]> = {
     'Tight overlay bounds + 3s countdown clock; single OCR worker by default',
     'Fix inventory sync crash (write after end on helper stdin)',
   ],
+  '0.9.78': [
+    'RELEASE.md checklist + 1.0 freeze path; Vite cache moved off OneDrive (fixes EPERM)',
+    'Inventory: helper version + clearer gruzzle → import fallback; age on status strip',
+    'Reward-screen HUD only (optional): hide worldstate until relic/riven OCR',
+    'Market trade log: session P/L + pointer to safe Reprice pass',
+    'Linux parity matrix: Steam / Wine / Proton / ptrace / capture / inventory',
+    'Opt-in crash log → offer GitHub bug report on next launch',
+  ],
 }
 
 export function getWhatsNewBullets(version: string): string[] {

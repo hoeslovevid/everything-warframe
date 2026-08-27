@@ -103,16 +103,25 @@ export function OverlayApp() {
   }, [settings.soundPack])
 
   // Relics / Rivens are transient popups (AlecaFrame-style), not always-on panels.
+  const rewardActive =
+    relicScan.active || relicScan.scanning || rivenScan.active || rivenScan.scanning
   const modules = useMemo(() => {
-    const enabled = OVERLAY_MODULE_IDS.filter(
+    let enabled = OVERLAY_MODULE_IDS.filter(
       (id) => settings.modules[id] && id !== 'relics' && id !== 'rivens',
     )
+    if (settings.overlayRewardHudOnly && !settings.layoutEditMode && !rewardActive) {
+      // In-mission: keep fissures for node picking; hide the rest until OCR reward UI.
+      enabled = enabled.filter((id) => id === 'fissures')
+    }
     const next = [...enabled]
     if (settings.modules.relics && (relicScan.active || relicScan.scanning)) next.push('relics')
     if (settings.modules.rivens && (rivenScan.active || rivenScan.scanning)) next.push('rivens')
     return next
   }, [
     settings.modules,
+    settings.overlayRewardHudOnly,
+    settings.layoutEditMode,
+    rewardActive,
     relicScan.active,
     relicScan.scanning,
     rivenScan.active,

@@ -58,8 +58,12 @@ export function StatusStrip({
         ? 'sync now'
         : invOk
           ? inventory?.stale
-            ? 'stale'
-            : 'synced'
+            ? inventory.staleAgeMs != null
+              ? `~${Math.max(1, Math.round(inventory.staleAgeMs / 60_000))}m`
+              : 'stale'
+            : inventory.helperVersion
+              ? `ok · h${inventory.helperVersion}`
+              : 'synced'
           : 'empty'
 
   const items: Health[] = [

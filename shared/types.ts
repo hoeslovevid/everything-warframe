@@ -544,6 +544,16 @@ export type AppSettings = {
    * transparent compositing). Disabled automatically while layout editing.
    */
   overlayTightBounds: boolean
+  /**
+   * In-mission HUD: hide worldstate overlay panels until a relic/riven reward
+   * screen is active (mission strip + OCR chip stay). Complements quiet focus.
+   */
+  overlayRewardHudOnly: boolean
+  /**
+   * When true, uncaught main-process errors are appended to userData/crash.log
+   * and a prompt can open a prefilled GitHub issue on next launch.
+   */
+  crashReportingConsent: boolean
   /** Collapse companion sidebar to icon-only. */
   navCollapsed: boolean
   /** Auto-resync inventory while Warframe is running. */
@@ -800,6 +810,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   gamePerformanceMode: true,
   ocrPoolSize: 1,
   overlayTightBounds: true,
+  overlayRewardHudOnly: false,
+  crashReportingConsent: false,
   navCollapsed: false,
   inventoryAutoSync: true,
   inventoryRemindWhenRunning: true,
@@ -1391,6 +1403,11 @@ export type MarketTradeLogResult = {
   soldPlat: number
   boughtPlat: number
   netPlat: number
+  /** App-session boundary for session P/L (ISO). */
+  sessionStartedAt: string
+  sessionSoldPlat: number
+  sessionBoughtPlat: number
+  sessionNetPlat: number
 }
 
 export type MarketTradeInput = {
@@ -1579,6 +1596,8 @@ export type InventoryStatus = {
   revision: number
   loaded: boolean
   helperReady: boolean
+  /** Bundled warframe-api-helper release tag (e.g. 1.1.2). */
+  helperVersion: string
   warframeRunning: boolean
   /** True when lastSynced is missing or older than ~6 hours. */
   stale: boolean
@@ -2000,7 +2019,7 @@ export type VoidLensApi = {
   ) => Promise<{ ok: boolean; error?: string; contract?: WfmContract }>
   openExternal: (url: string) => Promise<boolean>
   testScreenCapture: () => Promise<{ ok: boolean; message: string }>
-  /** Linux: YAMA ptrace_scope + inventory-sync tips. */
+  /** Linux: YAMA ptrace_scope + Proton / Steam parity. */
   getLinuxHealth: () => Promise<{
     platform: string
     ptrace: {
@@ -2011,7 +2030,13 @@ export type VoidLensApi = {
       fixCommand: string
       tip: string
     }
+    steamRunning: boolean
+    wineLauncherFound: boolean
+    protonPrefix: string | null
   }>
+  getPendingCrash: () => Promise<{ at: string; label: string; preview: string } | null>
+  clearPendingCrash: () => Promise<boolean>
+  readCrashLogTail: () => Promise<string>
   getWidgetServerStatus: () => Promise<{ running: boolean; port: number; baseUrl: string }>
   onSettingsChanged: (cb: (settings: AppSettings) => void) => () => void
   onWorldstateUpdated: (cb: (data: WorldstateSnapshot) => void) => () => void

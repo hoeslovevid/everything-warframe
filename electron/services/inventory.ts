@@ -31,8 +31,10 @@ import { findCatalogItemByName, findCatalogItemByUnique } from './item-catalog'
 import { lookupWfinfoPlatinum } from './wfinfo-prices'
 import { recordInventoryHaul } from './session-haul'
 
-const HELPER_URL =
-  'https://github.com/Sainan/warframe-api-helper/releases/download/1.1.2/warframe-api-helper.exe'
+const HELPER_VERSION = '1.1.2'
+const HELPER_URL = `https://github.com/Sainan/warframe-api-helper/releases/download/${HELPER_VERSION}/warframe-api-helper.exe`
+
+export { HELPER_VERSION }
 
 /** Same AES key/IV AlecaFrame / warframe-api-helper use for lastData.dat */
 const ALECA_KEY = Buffer.from([76, 69, 79, 45, 65, 76, 69, 67, 9, 69, 79, 45, 65, 76, 69, 67])
@@ -897,8 +899,8 @@ function helperFailureMessage(cleaned: string): string {
   }
   if (/Failed to gruzzle the crumbs/i.test(cleaned)) {
     return process.platform === 'linux'
-      ? 'Inventory helper found Warframe but could not read session memory (gruzzle). Stay logged in on the Orbiter, then in Settings → Linux health check Memory access — if ptrace is restricted, run: sudo sysctl -w kernel.yama.ptrace_scope=0 — and Sync again. Do not run the AppImage as root.'
-      : 'Inventory helper found Warframe but could not read account credentials from memory (gruzzle failed). Stay on the orbiter / logged in, then retry. If it keeps failing after an update, import inventory.json manually.'
+      ? `Inventory helper v${HELPER_VERSION} found Warframe but could not read session memory (gruzzle). Stay logged in on the Orbiter, then in Settings → Linux health check Memory access — if ptrace is restricted, run: sudo sysctl -w kernel.yama.ptrace_scope=0 — and Sync again. Or import inventory.json / AlecaFrame export under Inventory.`
+      : `Inventory helper v${HELPER_VERSION} found Warframe but could not read account credentials from memory (gruzzle). Stay on the Orbiter / logged in, then retry. If this keeps failing after a Warframe update, import inventory.json or an AlecaFrame export under Inventory.`
   }
   if (/Failed to open process/i.test(cleaned)) {
     return process.platform === 'linux'
@@ -1326,6 +1328,7 @@ export function getInventoryStatus(): InventoryStatus {
     revision: inventoryRevision,
     loaded: cachedMeta.uniqueCount > 0,
     helperReady: helperIsReady(),
+    helperVersion: HELPER_VERSION,
     warframeRunning: isWarframeRunning(),
     stale,
     staleAgeMs,

@@ -43,3 +43,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: ${{ matrix.publish_cmd }}
+
+      - name: Summarize artifacts
+        if: always()
+        shell: bash
+        run: |
+          echo "Version from package.json:"
+          node -p "require('./package.json').version"
+          echo "Release folder (if present):"
+          ls -la release 2>/dev/null || ls -la dist 2>/dev/null || true

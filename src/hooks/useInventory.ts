@@ -11,6 +11,7 @@ const emptyStatus: InventoryStatus = {
   revision: 0,
   loaded: false,
   helperReady: false,
+  helperVersion: '',
   warframeRunning: false,
   stale: true,
   staleAgeMs: null,

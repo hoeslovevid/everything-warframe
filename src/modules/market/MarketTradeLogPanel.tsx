@@ -8,6 +8,10 @@ const empty: MarketTradeLogResult = {
   soldPlat: 0,
   boughtPlat: 0,
   netPlat: 0,
+  sessionStartedAt: new Date().toISOString(),
+  sessionSoldPlat: 0,
+  sessionBoughtPlat: 0,
+  sessionNetPlat: 0,
 }
 
 export function MarketTradeLogPanel() {
@@ -86,15 +90,29 @@ export function MarketTradeLogPanel() {
       }
     >
       <p className="market-pnl">
-        Sold <strong>{log.soldPlat}p</strong>
-        <span className="muted"> · </span>
+        Session{' '}
+        <strong className={log.sessionNetPlat >= 0 ? 'market-pnl--pos' : 'market-pnl--neg'}>
+          {log.sessionNetPlat >= 0 ? '+' : ''}
+          {log.sessionNetPlat}p
+        </strong>
+        <span className="muted">
+          {' '}
+          (sold {log.sessionSoldPlat} · bought {log.sessionBoughtPlat})
+        </span>
+      </p>
+      <p className="market-pnl muted" style={{ marginTop: 4 }}>
+        All-time sold <strong>{log.soldPlat}p</strong>
+        <span> · </span>
         Bought <strong>{log.boughtPlat}p</strong>
-        <span className="muted"> · </span>
+        <span> · </span>
         Net{' '}
         <strong className={log.netPlat >= 0 ? 'market-pnl--pos' : 'market-pnl--neg'}>
           {log.netPlat >= 0 ? '+' : ''}
           {log.netPlat}p
         </strong>
+      </p>
+      <p className="muted" style={{ fontSize: '0.78rem', marginTop: 6 }}>
+        Safe undercut reprice: use <strong>Orders → Reprice pass</strong> (floor − 1, respects min).
       </p>
       <div className="market-create market-create--panel">
         <div className="vl-segment" role="group" aria-label="Trade side">

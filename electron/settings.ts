@@ -439,6 +439,14 @@ function mergeSettings(raw: Partial<AppSettings> | null | undefined): AppSetting
       typeof (raw as { overlayTightBounds?: boolean }).overlayTightBounds === 'boolean'
         ? (raw as { overlayTightBounds: boolean }).overlayTightBounds
         : base.overlayTightBounds,
+    overlayRewardHudOnly:
+      typeof (raw as { overlayRewardHudOnly?: boolean }).overlayRewardHudOnly === 'boolean'
+        ? (raw as { overlayRewardHudOnly: boolean }).overlayRewardHudOnly
+        : base.overlayRewardHudOnly,
+    crashReportingConsent:
+      typeof (raw as { crashReportingConsent?: boolean }).crashReportingConsent === 'boolean'
+        ? (raw as { crashReportingConsent: boolean }).crashReportingConsent
+        : base.crashReportingConsent,
     navCollapsed: raw.navCollapsed ?? base.navCollapsed,
     overlayOnlyInWarframe:
       typeof (raw as { overlayOnlyInWarframe?: boolean }).overlayOnlyInWarframe === 'boolean'

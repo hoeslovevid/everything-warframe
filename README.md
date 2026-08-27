@@ -21,11 +21,12 @@ Companion + transparent overlay for Warframe on **Windows** and **Linux (Steam/P
 
 ### Auto-updates
 
-Installed builds check [GitHub Releases](https://github.com/hoeslovevid/Warframe-Companion-Helper/releases) for newer versions.
+Installed builds check [GitHub Releases](https://github.com/hoeslovevid/everything-warframe/releases) for newer versions.
 
 - Automatic check shortly after launch (and every few hours)
 - **Settings → Updates** → Check for updates / Restart & install
 - Dev mode (`npm start`) does **not** auto-update
+- Maintainers: see **[RELEASE.md](./RELEASE.md)** — tagging `vX.Y.Z` runs CI that publishes Win + Linux installers
 
 ## Development
 
@@ -33,6 +34,8 @@ Installed builds check [GitHub Releases](https://github.com/hoeslovevid/Warframe
 npm install
 npm start
 ```
+
+**Windows / OneDrive:** This repo’s Vite cache lives in the OS temp folder (`vite-everything-warframe`), not under `node_modules/.vite`, to avoid `EPERM` when OneDrive locks files. If `npm start` still fails on a stale `.vite` folder, delete `node_modules/.vite` once and retry.
 
 This launches Vite, builds the Electron main/preload bundles, then opens:
 

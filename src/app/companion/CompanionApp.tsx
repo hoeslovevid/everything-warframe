@@ -531,6 +531,31 @@ export function CompanionApp() {
   }, [ready, settings.lastSeenVersion])
 
   useEffect(() => {
+    if (!ready || !settings.crashReportingConsent) return
+    let cancelled = false
+    void (async () => {
+      const pending = await window.voidlens?.getPendingCrash?.()
+      if (cancelled || !pending) return
+      const open = window.confirm(
+        `A previous crash was logged (${pending.label} at ${new Date(pending.at).toLocaleString()}).\n\nOpen a prefilled GitHub bug report? (Nothing is sent until you submit the issue.)`,
+      )
+      if (open) {
+        const tail = (await window.voidlens?.readCrashLogTail?.()) || pending.preview
+        await window.voidlens?.openBugReport?.({
+          title: `[crash] ${pending.label}`,
+          description: `Automatic crash prompt from opt-in crash log.\n\n\`\`\`\n${tail.slice(0, 3500)}\n\`\`\``,
+          category: 'other',
+          includeDiagnostics: true,
+        })
+      }
+      await window.voidlens?.clearPendingCrash?.()
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [ready, settings.crashReportingConsent])
+
+  useEffect(() => {
     if (!window.voidlens?.onRelicSound) return
     return window.voidlens.onRelicSound(() => playScanSound('relic', settings.soundPack))
   }, [settings.soundPack])
@@ -1813,12 +1838,24 @@ export function CompanionApp() {
                       onChange={(enabled) => void updateSettings({ overlayTightBounds: enabled })}
                     />
                     <ToggleRow
+                      label="Reward-screen HUD only"
+                      description="In-mission: hide worldstate panels until a relic/riven OCR screen is active (fissures + mission strip stay)"
+                      checked={settings.overlayRewardHudOnly}
+                      onChange={(enabled) => void updateSettings({ overlayRewardHudOnly: enabled })}
+                    />
+                    <ToggleRow
                       label="Dual OCR workers"
                       description="Faster multi-slot relic reads; uses more CPU/GPU. Restart app after changing."
                       checked={settings.ocrPoolSize === 2}
                       onChange={(enabled) =>
                         void updateSettings({ ocrPoolSize: enabled ? 2 : 1 })
                       }
+                    />
+                    <ToggleRow
+                      label="Opt-in crash log"
+                      description="Append main-process crashes to a local file and offer a GitHub bug report on next launch (nothing is sent automatically)"
+                      checked={settings.crashReportingConsent}
+                      onChange={(enabled) => void updateSettings({ crashReportingConsent: enabled })}
                     />
                     <ToggleRow
                       label="Relic scan chime"

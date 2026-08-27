@@ -28,8 +28,10 @@ export function InventoryStaleBanner({
   const canSync = Boolean(onSyncInventory && inventory.warframeRunning)
   return (
     <p className="market-buy-hit" role="status" style={{ marginBottom: 12 }}>
-      Inventory looks stale{mins != null ? ` (~${mins}m old)` : ''}. Sync after extraction so
-      ownership / recommend stay accurate.
+      Inventory looks stale{mins != null ? ` (~${mins}m old)` : ''}
+      {inventory.helperVersion ? ` · helper v${inventory.helperVersion}` : ''}. Sync after
+      extraction so ownership / recommend stay accurate — or import AlecaFrame /
+      inventory.json if live sync fails (gruzzle).
       {canSync ? (
         <>
           {' '}

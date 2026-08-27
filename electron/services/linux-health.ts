@@ -1,7 +1,12 @@
 /**
- * Linux diagnostics for inventory sync (YAMA ptrace / gruzzle).
+ * Linux diagnostics for inventory sync, overlay capture, and Proton parity.
  */
 import fs from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import {
+  findWarframeWineLauncher,
+  warframeProtonPrefix,
+} from './steam-paths'
 
 export type LinuxPtraceStatus = {
   /** YAMA ptrace_scope value, or null if unavailable. */
@@ -79,14 +84,56 @@ export function getLinuxPtraceStatus(): LinuxPtraceStatus {
   }
 }
 
+function steamRunning(): boolean {
+  if (process.platform !== 'linux') return false
+  try {
+    execFileSync('pgrep', ['-x', 'steam'], { stdio: 'ignore', timeout: 1500 })
+    return true
+  } catch {
+    try {
+      execFileSync('pgrep', ['-f', 'steam'], { stdio: 'ignore', timeout: 1500 })
+      return true
+    } catch {
+      return false
+    }
+  }
+}
+
 export type LinuxHealthSnapshot = {
   platform: string
   ptrace: LinuxPtraceStatus
+  steamRunning: boolean
+  wineLauncherFound: boolean
+  protonPrefix: string | null
 }
 
 export function getLinuxHealthSnapshot(): LinuxHealthSnapshot {
+  if (process.platform !== 'linux') {
+    return {
+      platform: process.platform,
+      ptrace: getLinuxPtraceStatus(),
+      steamRunning: false,
+      wineLauncherFound: false,
+      protonPrefix: null,
+    }
+  }
+  let wine = false
+  try {
+    wine = Boolean(findWarframeWineLauncher())
+  } catch {
+    wine = false
+  }
+  let prefix: string | null = null
+  try {
+    prefix = warframeProtonPrefix() || null
+  } catch {
+    prefix = null
+  }
   return {
     platform: process.platform,
     ptrace: getLinuxPtraceStatus(),
+    steamRunning: steamRunning(),
+    wineLauncherFound: wine,
+    protonPrefix: prefix,
   }
 }

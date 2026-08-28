@@ -22,6 +22,9 @@ function cleanRelicOcr(ocrText: string): string {
   return ocrText
     .replace(/\b(OWNED|CRAFTED|UNRANKED|STEEL|PATH|BONUS|ESSENCE)\b/gi, '')
     .replace(/\b\d+\s*Owned\b/gi, '')
+    // "2 X Forma Blueprint" / "2x Forma" quantity prefixes from stacked rewards
+    .replace(/^\s*\d+\s*[x×X]\s*/g, '')
+    .replace(/\b(\d+)\s*[x×X]\s+(?=[A-Za-z])/g, '')
     .replace(/\bForma\b(?!\s+Blueprint)/gi, 'Forma Blueprint')
     .replace(/\bBlueprint\b/gi, 'Blueprint')
     .replace(/[^A-Za-z0-9 '&-]+/g, ' ')
@@ -398,11 +401,8 @@ export async function scanRelicRewards(
 
       let next: RewardEval[] = ocrNames.map((cleaned, slot) => {
         let matched = matchCatalogItem(cleaned)
-        // OCR often drops "Blueprint" on Forma — force a stable catalog name.
-        if (
-          (!matched || matched.score < 0.5) &&
-          /^forma(\s+blueprint)?$/i.test(cleaned.trim())
-        ) {
+        // Stacked "2 X Forma" / OCR dropping "Blueprint" → stable Forma Blueprint hit.
+        if ((!matched || matched.score < 0.5) && /\bforma\b/i.test(cleaned)) {
           const formaHit = matchCatalogItem('Forma Blueprint')
           if (formaHit) matched = { ...formaHit, score: Math.max(formaHit.score, 0.85) }
         }

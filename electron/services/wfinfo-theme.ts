@@ -104,38 +104,28 @@ export function themeKeepsPixel(theme: WfThemeId, r: number, g: number, b: numbe
   )
 }
 
-/**
- * Sample the left/center reward strip and vote for the closest Warframe UI theme.
- * Mirrors wfinfo-ng `detect_theme`.
- */
-export function detectUiTheme(png: Buffer): WfThemeId {
-  const img = nativeImage.createFromBuffer(png)
-  const { width, height } = img.getSize()
-  if (width < 64 || height < 64) return 'Lotus'
-
-  const bitmap = img.toBitmap()
-  // Electron bitmap is BGRA on most platforms.
+function themeVoteWeights(
+  bitmap: Buffer,
+  width: number,
+  height: number,
+  y0: number,
+  y1: number,
+  x0: number,
+  x1: number,
+): Map<WfThemeId, number> {
   const weights = new Map<WfThemeId, number>()
   for (const id of THEME_IDS) weights.set(id, 0)
 
-  const screenScaling = width * 9 > height * 16 ? height / 1080 : width / 1920
-  const lineHeight = (48 / 2) * screenScaling
-  const mostWidth = 968 * screenScaling
-  const minWidth = mostWidth / 4
-
-  const stepY = Math.max(2, Math.round(height / 180))
-  const stepX = Math.max(2, Math.round(width / 320))
-
-  for (let y = Math.round(lineHeight); y < height; y += stepY) {
-    const perc = (y - lineHeight) / Math.max(1, height - lineHeight)
-    const totalWidth = minWidth * perc + minWidth
-    const x0 = Math.max(0, Math.round((mostWidth - totalWidth) / 2))
-    const x1 = Math.min(width - 1, Math.round(x0 + totalWidth))
+  const stepY = Math.max(1, Math.round((y1 - y0) / 40))
+  const stepX = Math.max(1, Math.round((x1 - x0) / 80))
+  for (let y = y0; y < y1; y += stepY) {
     for (let x = x0; x < x1; x += stepX) {
       const i = (y * width + x) * 4
       const b = bitmap[i]
       const g = bitmap[i + 1]
       const r = bitmap[i + 2]
+      // Skip near-black panel pixels — they don't vote for a theme.
+      if (r + g + b < 90) continue
       let best: WfThemeId = 'Lotus'
       let bestD = Infinity
       for (const id of THEME_IDS) {
@@ -148,20 +138,90 @@ export function detectUiTheme(png: Buffer): WfThemeId {
           best = id
         }
       }
-      weights.set(best, (weights.get(best) || 0) + 1 / Math.pow(1 + bestD / 255, 4))
+      // Prefer saturated mid/high pixels (UI glyphs) over muddy environment fills.
+      const maxc = Math.max(r, g, b)
+      const minc = Math.min(r, g, b)
+      const satBoost = maxc - minc > 40 ? 1.6 : 0.55
+      weights.set(best, (weights.get(best) || 0) + (satBoost / Math.pow(1 + bestD / 255, 4)))
     }
+  }
+  return weights
+}
+
+/** Name-band sample window — avoid Orokin/tileset backgrounds biasing theme detect. */
+function rewardNameBandBounds(width: number, height: number) {
+  const screenScaling = width * 9 > height * 16 ? height / 1080 : width / 1920
+  const mostWidth = 968 * screenScaling
+  const lineHeight = 48 * screenScaling
+  const mostTop = height / 2 - (316 - 235 + 48) * screenScaling
+  const y0 = Math.max(0, Math.round(mostTop + lineHeight * 0.05))
+  const y1 = Math.min(height, Math.round(mostTop + lineHeight * 2.1))
+  const x0 = Math.max(0, Math.round(width / 2 - mostWidth / 2))
+  const x1 = Math.min(width, Math.round(width / 2 + mostWidth / 2))
+  return { x0, x1, y0, y1 }
+}
+
+function estimateThemeKeepRatio(
+  bitmap: Buffer,
+  width: number,
+  height: number,
+  theme: WfThemeId,
+  y0: number,
+  y1: number,
+  x0: number,
+  x1: number,
+): number {
+  let kept = 0
+  let samples = 0
+  const stepY = Math.max(1, Math.round((y1 - y0) / 24))
+  const stepX = Math.max(1, Math.round((x1 - x0) / 48))
+  for (let y = y0; y < y1; y += stepY) {
+    for (let x = x0; x < x1; x += stepX) {
+      const i = (y * width + x) * 4
+      samples += 1
+      if (themeKeepsPixel(theme, bitmap[i + 2], bitmap[i + 1], bitmap[i])) kept += 1
+    }
+  }
+  return samples ? kept / samples : 0
+}
+
+/**
+ * Sample the reward *name band* (not the full frame) and vote for the UI theme.
+ * Full-frame voting used to pick Orokin/tileset colors and strip orange reward text.
+ * Prefers themes that isolate a sparse glyph mask (~0.5–10% keep) over environment fills.
+ */
+export function detectUiTheme(png: Buffer): WfThemeId {
+  const img = nativeImage.createFromBuffer(png)
+  const { width, height } = img.getSize()
+  if (width < 64 || height < 64) return 'Lotus'
+
+  const bitmap = img.toBitmap()
+  const { x0, x1, y0, y1 } = rewardNameBandBounds(width, height)
+  const weights = themeVoteWeights(bitmap, width, height, y0, y1, x0, x1)
+  const ordered = [...THEME_IDS].sort(
+    (a, b) => (weights.get(b) || 0) - (weights.get(a) || 0),
+  )
+
+  for (const id of ordered.slice(0, 8)) {
+    const ratio = estimateThemeKeepRatio(bitmap, width, height, id, y0, y1, x0, x1)
+    if (ratio >= 0.005 && ratio <= 0.1) return id
   }
 
-  let winner: WfThemeId = 'Lotus'
-  let bestW = -1
-  for (const id of THEME_IDS) {
-    const w = weights.get(id) || 0
-    if (w > bestW) {
-      bestW = w
-      winner = id
-    }
+  // Warm UI themes often match orange/gold reward text when tileset gold wins the vote.
+  const warmPreferred: WfThemeId[] = [
+    'Zephyr',
+    'Grineer',
+    'Baruuk',
+    'Legacy',
+    'Vitruvian',
+    'Lotus',
+  ]
+  for (const id of warmPreferred) {
+    const ratio = estimateThemeKeepRatio(bitmap, width, height, id, y0, y1, x0, x1)
+    if (ratio >= 0.005 && ratio <= 0.1) return id
   }
-  return winner
+
+  return ordered[0] || 'Lotus'
 }
 
 /** Top-N theme votes (highest weight first) — used for OCR fallback retries. */
@@ -171,42 +231,8 @@ export function rankUiThemes(png: Buffer, topN = 3): WfThemeId[] {
   if (width < 64 || height < 64) return ['Lotus']
 
   const bitmap = img.toBitmap()
-  const weights = new Map<WfThemeId, number>()
-  for (const id of THEME_IDS) weights.set(id, 0)
-
-  const screenScaling = width * 9 > height * 16 ? height / 1080 : width / 1920
-  const lineHeight = (48 / 2) * screenScaling
-  const mostWidth = 968 * screenScaling
-  const minWidth = mostWidth / 4
-
-  const stepY = Math.max(2, Math.round(height / 180))
-  const stepX = Math.max(2, Math.round(width / 320))
-
-  for (let y = Math.round(lineHeight); y < height; y += stepY) {
-    const perc = (y - lineHeight) / Math.max(1, height - lineHeight)
-    const totalWidth = minWidth * perc + minWidth
-    const x0 = Math.max(0, Math.round((mostWidth - totalWidth) / 2))
-    const x1 = Math.min(width - 1, Math.round(x0 + totalWidth))
-    for (let x = x0; x < x1; x += stepX) {
-      const i = (y * width + x) * 4
-      const b = bitmap[i]
-      const g = bitmap[i + 1]
-      const r = bitmap[i + 2]
-      let best: WfThemeId = 'Lotus'
-      let bestD = Infinity
-      for (const id of THEME_IDS) {
-        const d = Math.min(
-          rgbDist([r, g, b], THEME_COLORS[id].primary),
-          rgbDist([r, g, b], THEME_COLORS[id].secondary),
-        )
-        if (d < bestD) {
-          bestD = d
-          best = id
-        }
-      }
-      weights.set(best, (weights.get(best) || 0) + 1 / Math.pow(1 + bestD / 255, 4))
-    }
-  }
+  const { x0, x1, y0, y1 } = rewardNameBandBounds(width, height)
+  const weights = themeVoteWeights(bitmap, width, height, y0, y1, x0, x1)
 
   return [...THEME_IDS]
     .sort((a, b) => (weights.get(b) || 0) - (weights.get(a) || 0))
@@ -239,14 +265,20 @@ export function filterRelicTextPng(png: Buffer, theme: WfThemeId): Buffer {
     out[i + 3] = 255
   }
 
-  // Too few text pixels → luminance fallback (light UI text on dark panels).
-  if (kept < total * 0.004 || kept > total * 0.55) {
+  // Too few text pixels, or too many (wrong theme matching environment gold) →
+  // warm/bright glyph isolation. Orange UI text is often ~gray 110–140 so a
+  // plain luminance≥168 threshold used to wipe the names.
+  if (kept < total * 0.004 || kept > total * 0.12) {
     for (let i = 0; i + 3 < src.length; i += 4) {
       const b = src[i]
       const g = src[i + 1]
       const r = src[i + 2]
       const gray = (r * 299 + g * 587 + b * 114) / 1000
-      const keep = gray >= 168
+      const maxc = Math.max(r, g, b)
+      const minc = Math.min(r, g, b)
+      const warmGlyph = maxc >= 140 && maxc - minc >= 28 && r >= g && r > b
+      const brightGlyph = gray >= 168
+      const keep = warmGlyph || brightGlyph
       const v = keep ? 0 : 255
       out[i] = out[i + 1] = out[i + 2] = v
       out[i + 3] = 255

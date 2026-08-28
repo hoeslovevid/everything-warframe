@@ -373,6 +373,11 @@ export const WHATS_NEW: Record<string, string[]> = {
     'Ignore card-tall Relic OCR boxes (use built-in geometry); weak scans also fall back',
     'Layout tip: keep Relic OCR box thin over item names — Reset OCR areas clears a bad strip',
   ],
+  '0.9.82': [
+    'Fix relic OCR mis-reads when tileset gold (Orokin) was detected as the UI theme (#9)',
+    'Theme detect samples the name band and prefers themes that isolate orange/gold glyphs',
+    'Warmer text fallback + strip “2 X Forma” quantity prefixes for catalog match',
+  ],
 }
 
 export function getWhatsNewBullets(version: string): string[] {

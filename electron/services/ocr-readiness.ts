@@ -118,6 +118,23 @@ const READY_THRESHOLD = 0.42
 const STABLE_HITS = 1
 
 /**
+ * One-shot UI presence score (0–1) for relic/riven screens.
+ * Returns `null` when capture failed (do not treat as “UI gone”).
+ * Used by readiness wait and by “screen gone → dismiss overlay” watchers.
+ */
+export async function sampleOcrUiScore(kind: ReadinessKind): Promise<number | null> {
+  try {
+    const shot = await captureDisplayQuick()
+    if (!shot?.png?.length) return null
+    return kind === 'relic'
+      ? scoreRelicFrame(shot.png, shot.width, shot.height)
+      : scoreRivenFrame(shot.png, shot.width, shot.height)
+  } catch {
+    return null
+  }
+}
+
+/**
  * Poll the screen until the target UI looks painted, or maxMs elapses.
  * Uses a quick capture path (persistent stream when live) — no overlay pause.
  */

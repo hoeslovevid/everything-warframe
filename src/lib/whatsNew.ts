@@ -378,6 +378,9 @@ export const WHATS_NEW: Record<string, string[]> = {
     'Theme detect samples the name band and prefers themes that isolate orange/gold glyphs',
     'Warmer text fallback + strip “2 X Forma” quantity prefixes for catalog match',
   ],
+  '0.9.83': [
+    'Riven grader overlay auto-dismisses when the Cycle compare screen leaves (OCR watch)',
+  ],
 }
 
 export function getWhatsNewBullets(version: string): string[] {

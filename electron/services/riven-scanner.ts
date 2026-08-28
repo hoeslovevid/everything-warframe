@@ -3,7 +3,7 @@ import path from 'node:path'
 import { app } from 'electron'
 import { RivenScanState } from '../../shared/types'
 import { recognizeRivenBlocks, warmupOcr } from './ocr'
-import { waitForOcrUiReady } from './ocr-readiness'
+import { sampleOcrUiScore, waitForOcrUiReady } from './ocr-readiness'
 import { parseRivenOcr, recommendRolls } from './riven-grader'
 import { enrichRivensWithMarket } from './riven-market'
 import {
@@ -41,7 +41,16 @@ const listeners = new Set<Listener>()
 const AUTO_HIDE_MS = 90_000
 const AUTO_HIDE_ERROR_MS = 15_000
 
+/** Below this UI score the Cycle compare screen is treated as gone. */
+const RIVEN_GONE_SCORE = 0.25
+/** Consecutive low-score samples before auto-dismiss (~1.2s at 400ms). */
+const RIVEN_GONE_HITS = 3
+const RIVEN_GONE_POLL_MS = 400
+
 let hideTimer: NodeJS.Timeout | null = null
+let screenWatchTimer: NodeJS.Timeout | null = null
+let screenGoneHits = 0
+let screenWatchBusy = false
 
 let state: RivenScanState = {
   active: false,
@@ -57,6 +66,50 @@ let state: RivenScanState = {
 
 function emit() {
   for (const cb of listeners) cb(state)
+}
+
+function stopRivenScreenWatch() {
+  if (screenWatchTimer) {
+    clearInterval(screenWatchTimer)
+    screenWatchTimer = null
+  }
+  screenGoneHits = 0
+  screenWatchBusy = false
+}
+
+/**
+ * After a successful grade, poll until the Cycle compare UI leaves the screen,
+ * then clear the overlay (same idea as EE.log relic_rewards_end).
+ */
+function startRivenScreenWatch() {
+  stopRivenScreenWatch()
+  screenWatchTimer = setInterval(() => {
+    if (!state.active || state.scanning) return
+    if (screenWatchBusy) return
+    screenWatchBusy = true
+    void (async () => {
+      try {
+        const score = await sampleOcrUiScore('riven')
+        if (score == null) return
+        if (score < RIVEN_GONE_SCORE) {
+          screenGoneHits += 1
+          if (screenGoneHits >= RIVEN_GONE_HITS) {
+            console.info(
+              `[Everything Warframe] Riven compare UI gone (score=${score.toFixed(2)}) — dismissing overlay`,
+            )
+            stopRivenScreenWatch()
+            clearRivenScan()
+          }
+        } else {
+          screenGoneHits = 0
+        }
+      } catch {
+        // Transient capture blips — don't count as gone.
+      } finally {
+        screenWatchBusy = false
+      }
+    })()
+  }, RIVEN_GONE_POLL_MS)
 }
 
 function cancelHide() {
@@ -85,6 +138,7 @@ export function onRivenScanUpdated(cb: Listener) {
 
 export function clearRivenScan(): RivenScanState {
   cancelHide()
+  stopRivenScreenWatch()
   state = {
     active: false,
     scanning: false,
@@ -107,6 +161,7 @@ export async function warmupRivenScanner(): Promise<void> {
 export async function scanRivens(trigger: 'manual' | 'log' = 'manual'): Promise<RivenScanState> {
   if (state.scanning) return state
   cancelHide()
+  stopRivenScreenWatch()
 
   // Keep the grader popup active while scanning (same as relics) so the hotkey
   // shows “Reading…” immediately. Capture still pauses/hides the overlay window.
@@ -274,6 +329,7 @@ export async function scanRivens(trigger: 'manual' | 'log' = 'manual'): Promise<
     }
     emit()
     scheduleHide(AUTO_HIDE_MS)
+    startRivenScreenWatch()
     recordRivenScan(state)
 
     try {
@@ -304,6 +360,7 @@ export async function scanRivens(trigger: 'manual' | 'log' = 'manual'): Promise<
     }
     emit()
     scheduleHide(AUTO_HIDE_ERROR_MS)
+    startRivenScreenWatch()
     return state
   }
 }

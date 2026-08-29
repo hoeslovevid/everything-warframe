@@ -87,11 +87,17 @@ In Everything Warframe → **LFG** → set **Hub URL** to the HTTPS domain (no t
 
 Posts embeds with live slots/roster and buttons: **Join**, **Leave**, **Whisper**.
 
-1. [Discord Developer Portal](https://discord.com/developers/applications) → **New Application** → **Bot** → copy token.
+**Public invite (add to any server you manage):**  
+[Add Everything Warframe LFG bot](https://discord.com/oauth2/authorize?client_id=1543118817654476840&permissions=536955880&scope=bot%20applications.commands)
+
+After installing, an admin runs `/lfg setup` in that server (see below).
+
+Operator setup (hosting the hub):
+
+1. [Discord Developer Portal](https://discord.com/developers/applications) → your application → **Bot** → copy token.
 2. Enable no privileged intents (Guilds only).
-3. OAuth2 → URL Generator → scopes: `bot` **and** `applications.commands` → permissions: **Send Messages**, **Embed Links**, **Read Message History**, **Manage Webhooks**.
-4. Invite the bot to your server(s).
-5. Railway / host variable (only the token is required):
+3. Invite uses scopes `bot` + `applications.commands` and permissions: **Send Messages**, **Embed Links**, **Read Message History**, **Manage Webhooks** (same as the public link above).
+4. Railway / host variable (only the token is required):
 
 ```bash
 DISCORD_BOT_TOKEN=your-bot-token
@@ -99,7 +105,7 @@ DISCORD_BOT_TOKEN=your-bot-token
 # DISCORD_CHANNEL_ID=123456789012345678
 ```
 
-6. In Discord (Manage Server), run:
+5. In Discord (Manage Server), run:
 
 ```
 /lfg setup channel:#your-lfg-channel
@@ -115,7 +121,7 @@ That stores the channel in the hub DB and auto-creates a channel webhook as fall
 With **members only**, the host must have run `/lfg link` (or joined Discord with a matching IGN) and be a member of that server — otherwise that guild is skipped.  
 Also useful: `/lfg status`, `/lfg clear`.
 
-7. Anyone can save their Warframe name for Join **and** members-only announce matching:
+6. Anyone can save their Warframe name for Join **and** members-only announce matching:
 
 ```
 /lfg link ign:YourIgn

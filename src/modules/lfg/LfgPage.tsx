@@ -1106,6 +1106,17 @@ export function LfgPage({
                   Discord → channel settings → Integrations → Webhooks. Stored locally; never sent to
                   the LFG hub.
                 </p>
+                <p className="muted" style={{ fontSize: '0.75rem', margin: 0 }}>
+                  Prefer the community hub bot (Join / Leave / Whisper)?{' '}
+                  <a
+                    href="https://discord.com/oauth2/authorize?client_id=1543118817654476840&permissions=536955880&scope=bot%20applications.commands"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Add it to your Discord
+                  </a>
+                  , then run <code>/lfg setup</code> in that server.
+                </p>
               </div>
             ) : null}
           </Panel>

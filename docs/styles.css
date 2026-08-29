@@ -755,6 +755,17 @@ code {
     transparent;
 }
 
+.section-discord {
+  background:
+    radial-gradient(700px 360px at 0% 40%, var(--vl-bg-spot-2), transparent 55%),
+    transparent;
+}
+
+.section-discord .cta-row {
+  margin-top: 8px;
+  margin-bottom: 12px;
+}
+
 .feature-block {
   display: grid;
   grid-template-columns: auto 1fr;

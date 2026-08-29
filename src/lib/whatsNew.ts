@@ -418,6 +418,9 @@ export const WHATS_NEW: Record<string, string[]> = {
   '0.9.89': [
     'OCR warmup status on launch: companion status chip + overlay chip while engines heat up',
   ],
+  '0.9.90': [
+    'Add LFG Discord bot invite on the website, Help, and LFG Advanced settings',
+  ],
 }
 
 export function getWhatsNewBullets(version: string): string[] {

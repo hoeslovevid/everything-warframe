@@ -263,6 +263,17 @@ export function HelpPage({
                 hoeslovevid.github.io/Warframe-Companion-Helper
               </a>
             </li>
+            <li>
+              LFG Discord bot:{' '}
+              <a
+                href="https://discord.com/oauth2/authorize?client_id=1543118817654476840&permissions=536955880&scope=bot%20applications.commands"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Add to your server
+              </a>{' '}
+              (then <code>/lfg setup</code>)
+            </li>
             <li>In-app updates: Settings → Updates</li>
           </ul>
         </div>

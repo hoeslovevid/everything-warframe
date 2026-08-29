@@ -3,7 +3,8 @@
 Companion + transparent overlay for Warframe on **Windows** and **Linux (Steam/Proton)**: worldstate panels, Baro inventory, account inventory sync, and relic/riven OCR.
 
 **Website:** [hoeslovevid.github.io/Warframe-Companion-Helper](https://hoeslovevid.github.io/Warframe-Companion-Helper/)  
-**Downloads:** [GitHub Releases](https://github.com/hoeslovevid/everything-warframe/releases)
+**Downloads:** [GitHub Releases](https://github.com/hoeslovevid/everything-warframe/releases)  
+**LFG Discord bot:** [Add to your server](https://discord.com/oauth2/authorize?client_id=1543118817654476840&permissions=536955880&scope=bot%20applications.commands)
 
 ## Requirements
 

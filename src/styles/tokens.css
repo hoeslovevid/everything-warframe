@@ -377,6 +377,55 @@ code {
   margin-top: 4px;
 }
 
+.copyable {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-align: inherit;
+}
+
+.copyable:hover,
+.copyable:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  color: var(--vl-teal-bright, #5fd0c5);
+}
+
+.copyable--inline {
+  display: inline;
+}
+
+.error-fix-bar {
+  margin: 8px 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--vl-radius-sm);
+  border: 1px solid color-mix(in srgb, var(--vl-danger, #d46a6a) 45%, transparent);
+  background: color-mix(in srgb, var(--vl-danger, #d46a6a) 12%, transparent);
+}
+
+.error-fix-bar__msg {
+  margin: 0;
+  color: #f0c0c0;
+  font-size: 0.88rem;
+}
+
+.error-fix-bar__hint {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+}
+
+.error-fix-bar__actions {
+  margin-top: 8px;
+}
+
+.update-banner-panel {
+  border-color: color-mix(in srgb, var(--vl-accent, #c9a45c) 50%, transparent) !important;
+}
+
 /* ---------- Shared motion ---------- */
 @keyframes vlFadeUp {
   from {

@@ -90,11 +90,28 @@ export function GettingStarted({
     },
     {
       key: 'modulesTouched' as const,
-      label: 'Pick which modules to show',
-      detail: 'Toggle overlay panels for your play style.',
-      done: ob.modulesTouched,
-      actionLabel: 'Open Modules',
-      onAction: onGoModules,
+      label: 'Enable Relic Rewards',
+      detail: 'Turns on the reward overlay + EE.log auto-detect for fissure picks.',
+      done: settings.modules.relics !== false && (ob.modulesTouched || ob.firstRunRelicTestAck),
+      actionLabel: settings.modules.relics ? 'Relics on' : 'Enable Relics',
+      onAction: () => {
+        onGoModules()
+        onUpdate({
+          modules: { ...settings.modules, relics: true },
+          onboarding: { ...ob, modulesTouched: true },
+        })
+      },
+    },
+    {
+      key: 'firstRunRelicTestAck' as const,
+      label: 'Test OCR on a reward screen',
+      detail: `Open Layout to align OCR boxes, then scan with ${prettyHotkey(settings.hotkeys.scanRelics)} when rewards appear.`,
+      done: ob.firstRunRelicTestAck || ob.firstRelicSuccessAck,
+      actionLabel: 'Open Layout / mark done',
+      onAction: () => {
+        onGoLayout()
+        onUpdate({ onboarding: { ...ob, firstRunRelicTestAck: true, layoutVisited: true } })
+      },
     },
     {
       key: 'layoutVisited' as const,
@@ -123,7 +140,13 @@ export function GettingStarted({
       : []),
   ]
 
-  const required = steps.filter((s) => s.key !== 'inventoryConsent' && s.key !== 'modulesTouched' && s.key !== 'layoutVisited')
+  const required = steps.filter(
+    (s) =>
+      s.key !== 'inventoryConsent' &&
+      s.key !== 'modulesTouched' &&
+      s.key !== 'layoutVisited' &&
+      s.key !== 'firstRunRelicTestAck',
+  )
   const requiredDone = required.every((s) => s.done)
   const doneCount = steps.filter((s) => s.done).length
   const allDone = doneCount === steps.length

@@ -211,7 +211,10 @@ export function OverlayMissionStrip({
   if (!bits.length && !onToggleQuietFocus) return null
 
   return (
-    <div className="mission-strip" role="status">
+    <div
+      className={`mission-strip${syncProgress ? ' mission-strip--syncing' : ''}`}
+      role="status"
+    >
       {bits.length ? <span className="mission-strip__text">{bits.join(' · ')}</span> : null}
       {action?.run ? (
         <button type="button" className="mission-strip__btn" onClick={action.run}>

@@ -14,6 +14,15 @@ function formatWhen(iso: string) {
   }
 }
 
+function formatAge(ms: number | null | undefined) {
+  if (ms == null || ms < 0) return null
+  const mins = Math.round(ms / 60_000)
+  if (mins < 60) return `${Math.max(1, mins)}m old`
+  const hrs = Math.round(mins / 60)
+  if (hrs < 48) return `${hrs}h old`
+  return `${Math.round(hrs / 24)}d old`
+}
+
 export function InventorySettings() {
   const {
     status,
@@ -61,7 +70,18 @@ export function InventorySettings() {
           <span className="mod-stat__label">Last sync</span>
           <span className={`mod-stat__value ${status.stale ? '' : 'is-ok'}`}>
             {formatWhen(status.lastSynced)}
-            {status.loaded ? (status.stale ? ' · stale' : ' · fresh') : ''}
+            {status.loaded
+              ? status.stale
+                ? ` · stale${formatAge(status.staleAgeMs) ? ` (${formatAge(status.staleAgeMs)})` : ''}`
+                : ` · fresh${formatAge(status.staleAgeMs) ? ` (${formatAge(status.staleAgeMs)})` : ''}`
+              : ''}
+          </span>
+        </div>
+        <div className="mod-stat">
+          <span className="mod-stat__label">Helper</span>
+          <span className={`mod-stat__value ${status.helperReady ? 'is-ok' : ''}`}>
+            v{status.helperVersion || '—'}
+            {status.helperReady ? ' · downloaded' : ' · not downloaded yet'}
           </span>
         </div>
         <div className="mod-stat">
@@ -75,6 +95,20 @@ export function InventorySettings() {
         {status.stale && status.loaded ? (
           <p className="muted" style={{ color: '#d8c48a' }}>
             Inventory is stale — Foundry / relic “owned” tags may be wrong until you sync again.
+          </p>
+        ) : null}
+
+        {status.error ? (
+          <p className="muted" style={{ color: 'var(--vl-danger, #d46a6a)' }}>
+            {status.error}
+          </p>
+        ) : null}
+
+        {/gruzzle|could not read|helper/i.test(status.error || message || '') ? (
+          <p className="muted" style={{ color: '#d8c48a' }}>
+            Live sync failed — use <strong>Find existing exports</strong> or{' '}
+            <strong>Browse file…</strong> for <code>inventory.json</code> / AlecaFrame{' '}
+            <code>lastData.dat</code>. On Linux, check Linux health → Memory access (ptrace).
           </p>
         ) : null}
 

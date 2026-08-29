@@ -199,6 +199,38 @@
   background: #d46a6a;
 }
 
+.ocr-status-chip.is-stale .ocr-status-chip__dot {
+  background: #d8c48a;
+}
+
+.ocr-status-chip.is-syncing .ocr-status-chip__dot {
+  background: #5fd0c5;
+  box-shadow: 0 0 0 3px rgba(95, 208, 197, 0.28);
+  animation: ocr-sync-pulse 1s ease-in-out infinite;
+}
+
+.ocr-status-chip.is-syncing .ocr-status-chip__main {
+  border-color: rgba(95, 208, 197, 0.45);
+}
+
+@keyframes ocr-sync-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.overlay-perf-shell.density-compact .vl-panel {
+  font-size: 0.92em;
+}
+
+.overlay-perf-shell.density-readable .vl-panel {
+  font-size: 1.06em;
+}
+
 .ocr-status-chip__menu {
   display: flex;
   gap: 6px;

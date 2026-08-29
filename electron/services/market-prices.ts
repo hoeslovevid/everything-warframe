@@ -144,3 +144,103 @@ export async function suggestUndercutPrice(
     volume: hit.volume,
   }
 }
+
+type StatsPayload = {
+  payload?: {
+    statistics_closed?: {
+      '48hours'?: Array<{
+        datetime?: string
+        avg_price?: number
+        min_price?: number
+        max_price?: number
+        volume?: number
+      }>
+      '90days'?: Array<{
+        datetime?: string
+        avg_price?: number
+        min_price?: number
+        max_price?: number
+        volume?: number
+      }>
+    }
+  }
+}
+
+function mapStatsPoints(
+  rows:
+    | Array<{
+        datetime?: string
+        avg_price?: number
+        min_price?: number
+        max_price?: number
+        volume?: number
+      }>
+    | undefined,
+) {
+  if (!rows?.length) return []
+  return rows
+    .map((r) => {
+      const at = r.datetime ? Date.parse(r.datetime) : NaN
+      if (Number.isNaN(at)) return null
+      return {
+        at,
+        avg: Number(r.avg_price) || 0,
+        min: Number(r.min_price) || 0,
+        max: Number(r.max_price) || 0,
+        volume: Number(r.volume) || 0,
+      }
+    })
+    .filter((p): p is NonNullable<typeof p> => Boolean(p))
+    .sort((a, b) => a.at - b.at)
+}
+
+/** Fetch warframe.market 48h / 90d closed-order statistics for charts. */
+export async function getMarketPriceHistory(name: string): Promise<{
+  name: string
+  slug: string
+  points48h: Array<{ at: number; avg: number; min: number; max: number; volume: number }>
+  points90d: Array<{ at: number; avg: number; min: number; max: number; volume: number }>
+  error: string | null
+}> {
+  const trimmed = String(name || '').trim()
+  const slug = slugifyItemName(trimmed)
+  if (!trimmed || !slug) {
+    return { name: trimmed, slug: '', points48h: [], points90d: [], error: 'Missing item name' }
+  }
+  try {
+    const res = await fetch(`https://api.warframe.market/v1/items/${slug}/statistics`, {
+      headers: {
+        Accept: 'application/json',
+        Platform: 'pc',
+        Language: 'en',
+        'User-Agent': 'EverythingWarframe/market',
+      },
+    })
+    if (!res.ok) {
+      return {
+        name: trimmed,
+        slug,
+        points48h: [],
+        points90d: [],
+        error: `Market stats HTTP ${res.status}`,
+      }
+    }
+    const json = (await res.json()) as StatsPayload
+    const closed = json.payload?.statistics_closed
+    return {
+      name: trimmed,
+      slug,
+      points48h: mapStatsPoints(closed?.['48hours']),
+      points90d: mapStatsPoints(closed?.['90days']),
+      error: null,
+    }
+  } catch (err) {
+    return {
+      name: trimmed,
+      slug,
+      points48h: [],
+      points90d: [],
+      error: err instanceof Error ? err.message : 'Market stats failed',
+    }
+  }
+}

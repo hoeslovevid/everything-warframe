@@ -6,7 +6,7 @@ import { getInventoryIndex, ownedCountForReward } from './inventory'
 import { ensureItemCatalog, getSetParts, matchCatalogItem } from './item-catalog'
 import { lookupMarketPrices } from './market-prices'
 import { recognizeRewardNames, warmupOcr } from './ocr'
-import { waitForOcrUiReady } from './ocr-readiness'
+import { sampleOcrUiScore, waitForOcrUiReady } from './ocr-readiness'
 import { captureRewardRegionVariants, cropRelicBandsFromPng } from './screen-capture'
 import { detectRewardPlayerCount, detectUiTheme, rankUiThemes, type WfThemeId } from './wfinfo-theme'
 import { ensureWfinfoPrices, lookupWfinfoPrices } from './wfinfo-prices'
@@ -112,7 +112,16 @@ const listeners = new Set<Listener>()
 const AUTO_HIDE_SUCCESS_MS = 45_000
 const AUTO_HIDE_ERROR_MS = 12_000
 
+/** Below this UI score the reward strip is treated as gone. */
+const RELIC_GONE_SCORE = 0.25
+/** Consecutive low-score samples before auto-dismiss (~1.2s at 400ms). */
+const RELIC_GONE_HITS = 3
+const RELIC_GONE_POLL_MS = 400
+
 let hideTimer: NodeJS.Timeout | null = null
+let screenWatchTimer: NodeJS.Timeout | null = null
+let screenGoneHits = 0
+let screenWatchBusy = false
 
 let state: RelicScanState = {
   active: false,
@@ -137,6 +146,50 @@ export function setRelicSquadSizeHint(size: number | null) {
 
 function emit() {
   for (const cb of listeners) cb(state)
+}
+
+function stopRelicScreenWatch() {
+  if (screenWatchTimer) {
+    clearInterval(screenWatchTimer)
+    screenWatchTimer = null
+  }
+  screenGoneHits = 0
+  screenWatchBusy = false
+}
+
+/**
+ * After a successful scan, poll until the reward strip leaves the screen,
+ * then clear the overlay (complements EE.log relic_rewards_end).
+ */
+function startRelicScreenWatch() {
+  stopRelicScreenWatch()
+  screenWatchTimer = setInterval(() => {
+    if (!state.active || state.scanning) return
+    if (screenWatchBusy) return
+    screenWatchBusy = true
+    void (async () => {
+      try {
+        const score = await sampleOcrUiScore('relic')
+        if (score == null) return
+        if (score < RELIC_GONE_SCORE) {
+          screenGoneHits += 1
+          if (screenGoneHits >= RELIC_GONE_HITS) {
+            console.info(
+              `[Everything Warframe] Relic reward UI gone (score=${score.toFixed(2)}) — dismissing overlay`,
+            )
+            stopRelicScreenWatch()
+            clearRelicScan()
+          }
+        } else {
+          screenGoneHits = 0
+        }
+      } catch {
+        // Transient capture blips — don't count as gone.
+      } finally {
+        screenWatchBusy = false
+      }
+    })()
+  }, RELIC_GONE_POLL_MS)
 }
 
 function cancelAutoHide() {
@@ -237,6 +290,7 @@ export function onRelicScanUpdated(cb: Listener) {
 
 export function clearRelicScan(): RelicScanState {
   cancelAutoHide()
+  stopRelicScreenWatch()
   pendingSquadSize = null
   state = {
     active: false,
@@ -275,6 +329,7 @@ export async function scanRelicRewards(
   if (state.scanning) return state
 
   cancelAutoHide()
+  stopRelicScreenWatch()
 
   const squadSize = pendingSquadSize
   let lastMeta: RelicScanState['scanMeta'] = state.scanMeta
@@ -581,6 +636,7 @@ export async function scanRelicRewards(
     }
     emit()
     scheduleAutoHide(AUTO_HIDE_SUCCESS_MS)
+    startRelicScreenWatch()
 
     // Live market fill-in after the overlay is already visible (don't burn pick timer).
     const missing = rewards.filter((r) => r.platinum == null).map((r) => r.name)
@@ -615,6 +671,7 @@ export async function scanRelicRewards(
     }
     emit()
     scheduleAutoHide(AUTO_HIDE_ERROR_MS)
+    startRelicScreenWatch()
     return state
   }
 }

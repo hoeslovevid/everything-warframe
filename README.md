@@ -142,6 +142,14 @@ npm run build:riven-prefs
 8. Inventory sync from the game runs the Windows helper via Proton’s wine inside the Warframe prefix (or import `inventory.json` manually)
 9. **Data location:** settings, catalogs, and OCR caches live under `~/.local/share/Everything Warframe` (not inside the AppImage mount, and not under `~/.config`). First launch migrates any older `~/.config/Everything Warframe` folder automatically.
 
+Maintainers: release checklist matrix in **[docs/LINUX_PARITY.md](./docs/LINUX_PARITY.md)**.
+
+### Crash reports (opt-in)
+
+1. Settings → enable **Opt-in crash log**
+2. After a main-process crash, relaunch the companion
+3. Banner → **Open GitHub issue** (prefilled; you submit manually) — see Help → Crash reports
+
 ## Foundry planner
 
 1. Sync inventory under **Settings → Inventory**

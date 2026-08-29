@@ -37,8 +37,8 @@ Track toward **1.0.0** when all are true:
 - [ ] Release CI green for Win + Linux on every tag
 - [ ] Inventory: helper version shown; clear import fallback when gruzzle fails
 - [ ] Game performance mode + reward-HUD option validated in a long fissure session
-- [ ] Linux parity matrix (EE.log, Proton, ptrace, capture, inventory) all green on a Proton install
-- [ ] Opt-in crash log → GitHub issue path documented
+- [ ] Linux parity matrix ([docs/LINUX_PARITY.md](./docs/LINUX_PARITY.md)) — EE.log, Proton, ptrace, capture, inventory all green on a Proton install
+- [ ] Opt-in crash log → GitHub issue path documented (Help → Crash reports; Settings toggle)
 - [ ] OCR edge cases bug-bashed (theme, 3/4 squad, multi-monitor)
 - [ ] Optional: Windows code signing (`CSC_*` certs) — not required for 1.0 but recommended later
 

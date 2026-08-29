@@ -215,6 +215,11 @@ function mergeSettings(raw: Partial<AppSettings> | null | undefined): AppSetting
       typeof raw.overlayScale === 'number' && Number.isFinite(raw.overlayScale)
         ? Math.min(1.5, Math.max(0.75, raw.overlayScale))
         : base.overlayScale,
+    overlayDensity: (() => {
+      const d = (raw as { overlayDensity?: string }).overlayDensity
+      if (d === 'compact' || d === 'normal' || d === 'readable') return d
+      return base.overlayDensity
+    })(),
     colorTheme:
       raw.colorTheme && COLOR_THEMES.includes(raw.colorTheme as ColorThemeId)
         ? (raw.colorTheme as ColorThemeId)
@@ -402,6 +407,22 @@ function mergeSettings(raw: Partial<AppSettings> | null | undefined): AppSetting
       (raw as { lfgLanguage: string }).lfgLanguage.trim()
         ? String((raw as { lfgLanguage: string }).lfgLanguage).trim().slice(0, 8)
         : base.lfgLanguage,
+    uiLocale: (() => {
+      const v = (raw as { uiLocale?: string }).uiLocale
+      if (
+        v === 'system' ||
+        v === 'en' ||
+        v === 'es' ||
+        v === 'fr' ||
+        v === 'de' ||
+        v === 'pt' ||
+        v === 'ru' ||
+        v === 'zh'
+      ) {
+        return v
+      }
+      return base.uiLocale
+    })(),
     lfgClientId:
       typeof (raw as { lfgClientId?: string }).lfgClientId === 'string' &&
       (raw as { lfgClientId: string }).lfgClientId.trim()
@@ -464,6 +485,37 @@ function mergeSettings(raw: Partial<AppSettings> | null | undefined): AppSetting
         ? (raw as { settingsCloudSyncAuto: boolean }).settingsCloudSyncAuto
         : base.settingsCloudSyncAuto,
     navCollapsed: raw.navCollapsed ?? base.navCollapsed,
+    navPinnedTabs: Array.isArray((raw as { navPinnedTabs?: unknown }).navPinnedTabs)
+      ? ((raw as { navPinnedTabs: unknown[] }).navPinnedTabs || [])
+          .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+          .map((t) => t.trim())
+          .slice(0, 12)
+      : base.navPinnedTabs,
+    autoMinimizeCompanionOnWarframeFocus:
+      typeof (raw as { autoMinimizeCompanionOnWarframeFocus?: boolean })
+        .autoMinimizeCompanionOnWarframeFocus === 'boolean'
+        ? (raw as { autoMinimizeCompanionOnWarframeFocus: boolean })
+            .autoMinimizeCompanionOnWarframeFocus
+        : base.autoMinimizeCompanionOnWarframeFocus,
+    requireWarframeFocusForAutoScan:
+      typeof (raw as { requireWarframeFocusForAutoScan?: boolean })
+        .requireWarframeFocusForAutoScan === 'boolean'
+        ? (raw as { requireWarframeFocusForAutoScan: boolean }).requireWarframeFocusForAutoScan
+        : base.requireWarframeFocusForAutoScan,
+    marketLastTab:
+      typeof (raw as { marketLastTab?: string }).marketLastTab === 'string' &&
+      (raw as { marketLastTab: string }).marketLastTab.trim()
+        ? String((raw as { marketLastTab: string }).marketLastTab).trim().slice(0, 32)
+        : base.marketLastTab,
+    inventoryLastKind:
+      typeof (raw as { inventoryLastKind?: string }).inventoryLastKind === 'string' &&
+      (raw as { inventoryLastKind: string }).inventoryLastKind.trim()
+        ? String((raw as { inventoryLastKind: string }).inventoryLastKind).trim().slice(0, 24)
+        : base.inventoryLastKind,
+    inventoryLastSearch:
+      typeof (raw as { inventoryLastSearch?: string }).inventoryLastSearch === 'string'
+        ? String((raw as { inventoryLastSearch: string }).inventoryLastSearch).slice(0, 120)
+        : base.inventoryLastSearch,
     overlayOnlyInWarframe:
       typeof (raw as { overlayOnlyInWarframe?: boolean }).overlayOnlyInWarframe === 'boolean'
         ? (raw as { overlayOnlyInWarframe: boolean }).overlayOnlyInWarframe

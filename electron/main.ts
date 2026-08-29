@@ -246,6 +246,12 @@ async function runRelicScan(trigger: 'manual' | 'log', squadSize?: number | null
       console.info('[Everything Warframe] Relic auto-scan skipped — Warframe not running')
       return getRelicScanState()
     }
+    if (settings.requireWarframeFocusForAutoScan && !fg) {
+      console.info(
+        '[Everything Warframe] Relic auto-scan skipped — Warframe not focused (Settings → require focus)',
+      )
+      return getRelicScanState()
+    }
   }
   if (!settings.overlayVisible) {
     const next = updateSettings({ overlayVisible: true })
@@ -306,16 +312,15 @@ async function runRivenScan(trigger: 'manual' | 'log') {
     invalidateWarframeProcessCache()
     const fg = await isWarframeForeground()
     const running = fg ? true : await isWarframeRunning()
-    // EE.log only advances while the game is up; require running, not strict focus
-    // (focus checks are flaky under overlays / multi-monitor).
     if (!running) {
       console.info('[Everything Warframe] Riven auto-scan skipped — Warframe not running')
       return getRivenScanState()
     }
-    if (!fg) {
+    if (settings.requireWarframeFocusForAutoScan && !fg) {
       console.info(
-        '[Everything Warframe] Riven auto-scan: Warframe running but not focused — scanning anyway',
+        '[Everything Warframe] Riven auto-scan skipped — Warframe not focused (Settings → require focus)',
       )
+      return getRivenScanState()
     }
   }
   if (!settings.overlayVisible) {
@@ -506,6 +511,7 @@ async function refreshWorldstate(force = false): Promise<WorldstateSnapshot> {
 
 function raiseCompanion() {
   if (!companionWindow || companionWindow.isDestroyed()) return
+  companionAutoMinimized = false
   // Same tier as overlay (screen-saver), then moveTop so the companion wins
   companionWindow.setAlwaysOnTop(true, 'screen-saver')
   companionWindow.show()
@@ -862,10 +868,12 @@ function applyOverlayWindowVisible(
   else hide()
 }
 
+let companionAutoMinimized = false
+
 async function refreshOverlayWarframeGate(opts?: { force?: boolean }) {
   if (overlayGateRefreshInFlight) return
   const settings = loadSettings()
-  if (!settings.overlayOnlyInWarframe) {
+  if (!settings.overlayOnlyInWarframe && !settings.autoMinimizeCompanionOnWarframeFocus) {
     if (!overlayWarframeGateOk) {
       overlayWarframeGateOk = true
       syncOverlayWindowVisibility({ silent: true })
@@ -877,8 +885,38 @@ async function refreshOverlayWarframeGate(opts?: { force?: boolean }) {
   try {
     if (opts?.force) invalidateWarframeProcessCache()
     const state = await getWarframeProcessState()
-    // warframe-process already falls back to “running” when focus can’t be read (e.g. Wayland).
     const nextOk = state.foreground
+
+    if (settings.autoMinimizeCompanionOnWarframeFocus) {
+      if (
+        state.foreground &&
+        companionWindow &&
+        !companionWindow.isDestroyed() &&
+        companionWindow.isVisible() &&
+        !companionWindow.isMinimized()
+      ) {
+        companionWindow.minimize()
+        companionAutoMinimized = true
+      } else if (
+        !state.foreground &&
+        companionAutoMinimized &&
+        companionWindow &&
+        !companionWindow.isDestroyed() &&
+        companionWindow.isMinimized()
+      ) {
+        companionWindow.restore()
+        companionAutoMinimized = false
+      }
+    }
+
+    if (!settings.overlayOnlyInWarframe) {
+      if (!overlayWarframeGateOk) {
+        overlayWarframeGateOk = true
+        syncOverlayWindowVisibility({ silent: true })
+      }
+      return
+    }
+
     if (nextOk === overlayWarframeGateOk) return
     overlayWarframeGateOk = nextOk
     console.info(
@@ -1502,8 +1540,20 @@ function registerIpc() {
   })
   ipcMain.handle('inventory:index', () => getInventoryIndex())
   ipcMain.handle('inventory:diff', () => getInventoryDiff())
+  ipcMain.handle('inventory:diffHistory', async () => {
+    const { getInventoryDiffHistory } = await import('./services/inventory-diff-history')
+    return getInventoryDiffHistory()
+  })
+  ipcMain.handle('inventory:diffHistoryClear', async () => {
+    const { clearInventoryDiffHistory } = await import('./services/inventory-diff-history')
+    return clearInventoryDiffHistory()
+  })
   ipcMain.handle('session:haul', () => getSessionHaul())
   ipcMain.handle('session:haulClear', () => clearSessionHaul())
+  ipcMain.handle('session:ledger', async () => {
+    const { getSessionLedger } = await import('./services/session-ledger')
+    return getSessionLedger()
+  })
   ipcMain.handle('loadout:get', async () => {
     const { getLoadoutSnapshot } = await import('./services/loadout')
     return getLoadoutSnapshot()
@@ -1515,6 +1565,10 @@ function registerIpc() {
   ipcMain.handle('arb:log', async () => {
     const { getArbitrationLog } = await import('./services/arbitration-log')
     return getArbitrationLog()
+  })
+  ipcMain.handle('arb:analytics', async () => {
+    const { getArbitrationAnalytics } = await import('./services/arbitration-log')
+    return getArbitrationAnalytics()
   })
   ipcMain.handle('arb:logClear', async () => {
     const { clearArbitrationLog } = await import('./services/arbitration-log')
@@ -1674,6 +1728,10 @@ function registerIpc() {
   ipcMain.handle('market:undercut', async (_e, name: string) =>
     fetchUndercutSuggestion(typeof name === 'string' ? name : ''),
   )
+  ipcMain.handle('market:priceHistory', async (_e, name: string) => {
+    const { getMarketPriceHistory } = await import('./services/market-prices')
+    return getMarketPriceHistory(typeof name === 'string' ? name : '')
+  })
   ipcMain.handle('market:wfmSession', async () => getWfmSession())
   ipcMain.handle('market:wfmSetJwt', async (_e, jwt: string) =>
     setWfmJwt(typeof jwt === 'string' ? jwt : ''),

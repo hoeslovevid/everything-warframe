@@ -1,4 +1,5 @@
 import { FissureInfo, FissurePathMode, FissureSort } from '../../../shared/types'
+import { Copyable } from '../../components/Copyable'
 import { Panel } from '../../components/Panel'
 import { useNow } from '../../hooks/useNow'
 import { formatCountdown, isExpired } from '../../lib/time'
@@ -63,7 +64,16 @@ export function FissuresPanel({
                 {f.isStorm ? ' Storm' : ''} · {f.missionType}
               </div>
               <div className="mod-row__meta">
-                {f.node} · {f.enemy}
+                <Copyable
+                  text={f.node}
+                  className="copyable--inline"
+                  toastOk={`Copied ${f.node}`}
+                  title={`Copy node: ${f.node}`}
+                >
+                  {f.node}
+                </Copyable>
+                {' · '}
+                {f.enemy}
               </div>
             </div>
             <div className="mod-row__value">{formatCountdown(f.expiry, now)}</div>

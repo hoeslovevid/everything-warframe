@@ -1192,6 +1192,13 @@ export function useInventoryFile(
     } catch {
       // haul is best-effort
     }
+    try {
+      void import('./inventory-diff-history').then((m) => {
+        m.recordInventoryDiffHistory(lastInventoryDiff)
+      })
+    } catch {
+      // history is best-effort
+    }
     cachedIndex = loaded.index
     cachedMastery = loaded.mastery
     cachedGearCategory = loaded.gearCategory

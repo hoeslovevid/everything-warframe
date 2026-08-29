@@ -41,6 +41,15 @@
   background: rgba(255, 255, 255, 0.2);
 }
 
+.mission-strip--syncing {
+  border-color: rgba(95, 208, 197, 0.5);
+  box-shadow: 0 0 0 1px rgba(95, 208, 197, 0.2);
+}
+
+.mission-strip--syncing .mission-strip__text {
+  color: #b8f0e8;
+}
+
 .mission-strip--host {
   max-width: min(920px, calc(100vw - 24px));
   gap: 8px;

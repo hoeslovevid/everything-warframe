@@ -4,6 +4,7 @@ import { BugReportPanel } from './BugReportPanel'
 import { Panel } from './Panel'
 import { UninstallPanel } from './UninstallPanel'
 import { prettyHotkey } from '../lib/hotkey'
+import { resolveUiLocale, t } from '../lib/i18n'
 import './onboarding.css'
 
 type Props = {
@@ -27,6 +28,7 @@ export function HelpPage({
   onScrollToConsumed,
 }: Props) {
   const hk = settings.hotkeys
+  const locale = resolveUiLocale(settings.uiLocale || 'system')
 
   useEffect(() => {
     if (!scrollToId) return
@@ -38,11 +40,9 @@ export function HelpPage({
   return (
     <>
       <header className="page-header">
-        <h2 className="page-title">Help</h2>
+        <h2 className="page-title">{t(locale, 'page.help')}</h2>
         <div className="page-title-rule" />
-        <p className="page-desc">
-          Quick guide to Everything Warframe — setup, overlays, and the keys you’ll use most.
-        </p>
+        <p className="page-desc">{t(locale, 'page.helpDesc')}</p>
       </header>
 
       <div className="toolbar">
@@ -164,6 +164,32 @@ export function HelpPage({
               </button>
             </p>
           ) : null}
+        </div>
+      </Panel>
+
+      <div className="section-gap" />
+
+      <Panel title="Crash reports" subtitle="Opt-in · local only until you submit">
+        <div className="help-block" id="help-crash-reports">
+          <h3>How it works</h3>
+          <ol style={{ margin: '0 0 8px', paddingLeft: 18 }}>
+            <li>
+              Enable <strong>Settings → Opt-in crash log</strong> (off by default).
+            </li>
+            <li>
+              If the main process crashes, a note is written under the app data folder (
+              <code>crash.log</code> / <code>crash-pending.json</code>).
+            </li>
+            <li>
+              On the next companion launch, a banner offers <strong>Open GitHub issue</strong> with a
+              prefilled title and log tail. Nothing is uploaded until you click submit on GitHub.
+            </li>
+            <li>You can dismiss the banner or use the Bug report form below anytime.</li>
+          </ol>
+          <p className="muted" style={{ marginBottom: 0 }}>
+            Renderer-only freezes are not captured yet. Prefer reproducing once, then opening the
+            issue with diagnostics attached.
+          </p>
         </div>
       </Panel>
 

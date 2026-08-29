@@ -167,24 +167,36 @@ export function OverlayApp() {
         : undefined
 
   const ocrPhase = (() => {
+    if (inventoryProgress) return 'syncing' as const
     if (relicScan.scanning || rivenScan.scanning) return 'reading' as const
     if (relicScan.error || rivenScan.error) return 'error' as const
+    if (inventory.stale && inventory.loaded) return 'stale' as const
     if (relicScan.active && relicScan.rewards.length > 0) return 'done' as const
     if (rivenScan.active && (rivenScan.current || rivenScan.reroll)) return 'done' as const
     return 'idle' as const
   })()
   const ocrLabel =
-    ocrPhase === 'reading'
-      ? relicScan.scanning
-        ? 'OCR · reading relics'
-        : 'OCR · reading rivens'
-      : ocrPhase === 'done'
-        ? relicScan.active && relicScan.rewards.length
-          ? 'OCR · relic ready'
-          : 'OCR · riven ready'
-        : ocrPhase === 'error'
-          ? 'OCR · failed'
-          : 'OCR · idle'
+    ocrPhase === 'syncing'
+      ? inventoryProgress && inventoryProgress.length > 28
+        ? `Inv · ${inventoryProgress.slice(0, 26)}…`
+        : `Inv · ${inventoryProgress || 'syncing'}`
+      : ocrPhase === 'reading'
+        ? relicScan.scanning
+          ? 'OCR · reading relics'
+          : 'OCR · reading rivens'
+        : ocrPhase === 'done'
+          ? relicScan.active && relicScan.rewards.length
+            ? 'OCR · relic ready'
+            : 'OCR · riven ready'
+          : ocrPhase === 'error'
+            ? 'OCR · failed'
+            : ocrPhase === 'stale'
+              ? 'Inv · stale — sync'
+              : 'OCR · idle'
+
+  const density = settings.overlayDensity || 'normal'
+  const densityScaleBoost = density === 'readable' ? 1.12 : density === 'compact' ? 0.92 : 1
+  const effectiveScale = Math.min(1.55, Math.max(0.7, (settings.overlayScale || 1) * densityScaleBoost))
 
   const cue = toggleCue ? (
     <div className={`overlay-toggle-cue ${toggleCue === 'off' ? 'is-off' : ''}`}>
@@ -213,7 +225,7 @@ export function OverlayApp() {
   return (
     <NowProvider active intervalMs={clockMs}>
       <div
-        className={`overlay-perf-shell${contentOrigin?.tight && !settings.layoutEditMode ? ' is-tight' : ''}`}
+        className={`overlay-perf-shell density-${density}${contentOrigin?.tight && !settings.layoutEditMode ? ' is-tight' : ''}`}
         style={{ ...originShift, ...designSize }}
       >
         <OverlayLayoutStage
@@ -224,7 +236,7 @@ export function OverlayApp() {
           anchors={anchors}
           opacity={settings.opacity}
           moduleOpacity={settings.moduleOpacity}
-          overlayScale={settings.overlayScale}
+          overlayScale={effectiveScale}
           fissureTiers={settings.fissureTiers}
           fissurePathMode={settings.fissurePathMode}
           fissureShowStorms={settings.fissureShowStorms}
@@ -273,11 +285,12 @@ export function OverlayApp() {
                 className="ocr-status-chip__action"
                 onClick={() => {
                   setOcrMenuOpen(false)
-                  if (rivenScan.active || rivenScan.scanning) void scanRivens()
+                  if (ocrPhase === 'stale') void syncFromGame()
+                  else if (rivenScan.active || rivenScan.scanning) void scanRivens()
                   else void scanRelics()
                 }}
               >
-                Retry
+                {ocrPhase === 'stale' ? 'Sync inventory' : 'Retry'}
               </button>
               <button
                 type="button"

@@ -5,6 +5,7 @@ import { Panel } from '../../components/Panel'
 import { useRelicScan } from '../../hooks/useRelicScan'
 import { useSettings } from '../../hooks/useVoidLens'
 import { copyText, formatBestPickTradeLine, formatRelicTradeLine } from '../../lib/tradeClipboard'
+import { ErrorFixBar, suggestErrorFixes } from '../../components/ErrorFixBar'
 import { pushToast } from '../../lib/toast'
 import { listBestPickOnMarket } from '../../lib/listBestPick'
 import '../cycles/module.css'
@@ -247,7 +248,23 @@ export function RelicsPanel({
       <div className="relic-strip" style={{ opacity, width: stripW }} data-relic-strip>
         {scanning ? <p className="relic-strip__status">Scanning…</p> : null}
         {!previewMode && state.error ? (
-          <p className="relic-strip__error">{state.error}</p>
+          <ErrorFixBar
+            message={state.error}
+            hint="Align the Relic OCR strip on Layout, then retry."
+            className="relic-strip__error-fix"
+            actions={suggestErrorFixes(state.error, {
+              onLayout: () => void window.voidlens?.navigateCompanion?.('layout'),
+              onSettings: () => void window.voidlens?.navigateCompanion?.('settings'),
+              onRetryRelic: () => void scan(),
+              onBug: () =>
+                void window.voidlens?.openBugReport?.({
+                  title: '[ocr] Relic scan failed',
+                  description: state.error || '',
+                  category: 'relics',
+                  includeDiagnostics: true,
+                }),
+            })}
+          />
         ) : null}
         {showRecovery ? (
           <div className="relic-strip__recovery">

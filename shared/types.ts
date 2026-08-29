@@ -410,6 +410,11 @@ export type AppSettings = {
   moduleOpacity: Partial<Record<ModuleId, number>>
   /** Visual scale for overlay panels (WFHelper-style). */
   overlayScale: number
+  /**
+   * Overlay information density.
+   * compact = tighter panels; readable = larger type + more padding (also bumps scale).
+   */
+  overlayDensity: 'compact' | 'normal' | 'readable'
   /** Companion + overlay color palette. */
   colorTheme: ColorThemeId
   /** Seed colors when `colorTheme` is `custom`. */
@@ -514,6 +519,11 @@ export type AppSettings = {
   lfgPlatform: 'pc' | 'psn' | 'xbox' | 'switch' | 'mobile'
   lfgRegion: 'na' | 'eu' | 'asia' | 'sa' | 'oce'
   lfgLanguage: string
+  /**
+   * Companion UI language (subset of chrome strings). Overlay OCR stays English.
+   * `system` follows OS locale when a pack exists, else English.
+   */
+  uiLocale: 'system' | 'en' | 'es' | 'fr' | 'de' | 'pt' | 'ru' | 'zh'
   /** Stable client id for join/leave (generated once). */
   lfgClientId: string
   /** Host tokens for listings you created (id → token). */
@@ -563,6 +573,24 @@ export type AppSettings = {
   settingsCloudSyncAuto: boolean
   /** Collapse companion sidebar to icon-only. */
   navCollapsed: boolean
+  /** Pinned companion tabs shown under Favorites (tab ids). */
+  navPinnedTabs: string[]
+  /**
+   * When Warframe is foreground, minimize the companion window (optional).
+   * Hotkeys / tray still work; raise companion via tray or Alt+Shift+C.
+   */
+  autoMinimizeCompanionOnWarframeFocus: boolean
+  /**
+   * EE.log auto relic/riven scans only when Warframe is the foreground window.
+   * Manual hotkeys always work.
+   */
+  requireWarframeFocusForAutoScan: boolean
+  /** Persist last Market companion sub-tab. */
+  marketLastTab: string
+  /** Persist Inventory browser kind filter. */
+  inventoryLastKind: string
+  /** Persist Inventory search string. */
+  inventoryLastSearch: string
   /** Auto-resync inventory while Warframe is running. */
   inventoryAutoSync: boolean
   /** Toast when inventory is stale and Warframe is running. */
@@ -597,6 +625,10 @@ export type AppSettings = {
     ocrMonitorAck: boolean
     /** Confirmed EE.log path is set / detected. */
     eeLogAck: boolean
+    /** First-run: enabled Relics + confirmed a test OCR path. */
+    firstRunRelicTestAck: boolean
+    /** Finished or skipped the OCR calibration wizard. */
+    ocrCalibWizardAck: boolean
   }
 }
 
@@ -739,6 +771,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     relicRecommend: 0.92,
   },
   overlayScale: 1,
+  overlayDensity: 'normal',
   colorTheme: 'void',
   customPalette: { ...DEFAULT_CUSTOM_PALETTE },
   hotkeys: {
@@ -807,6 +840,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   lfgPlatform: 'pc',
   lfgRegion: 'na',
   lfgLanguage: 'en',
+  uiLocale: 'system',
   lfgClientId: '',
   lfgHostTokens: {},
   widgetServerEnabled: false,
@@ -822,6 +856,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   settingsCloudSyncPath: '',
   settingsCloudSyncAuto: true,
   navCollapsed: false,
+  navPinnedTabs: [],
+  autoMinimizeCompanionOnWarframeFocus: false,
+  requireWarframeFocusForAutoScan: true,
+  marketLastTab: 'watchlist',
+  inventoryLastKind: 'all',
+  inventoryLastSearch: '',
   inventoryAutoSync: true,
   inventoryRemindWhenRunning: true,
   baroArrivalNotify: true,
@@ -846,6 +886,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     linuxCaptureAck: false,
     ocrMonitorAck: false,
     eeLogAck: false,
+    firstRunRelicTestAck: false,
+    ocrCalibWizardAck: false,
   },
 }
 
@@ -1087,6 +1129,24 @@ export type ArbitrationRunEntry = {
 export type ArbitrationLogSnapshot = {
   runs: ArbitrationRunEntry[]
   sessionStartedAt: string
+}
+
+/** Multi-day Arbitration haul analytics (persisted). */
+export type ArbitrationAnalytics = {
+  sessionStartedAt: string
+  /** Recent runs (newest first), including older persisted history. */
+  runs: ArbitrationRunEntry[]
+  totals: {
+    runs: number
+    vitusEssence: number
+    rareDrops: number
+    totalDropStacks: number
+  }
+  byNode: Array<{ node: string; runs: number; vitus: number; rareDrops: number }>
+  byDay: Array<{ day: string; runs: number; vitus: number }>
+  /** Vitus gained / hours spanned by history (null if < 1 run). */
+  vitusPerHour: number | null
+  historyDays: number
 }
 
 export type FoundryCategory =
@@ -1673,6 +1733,20 @@ export type InventoryDiff = {
   }
 }
 
+/** One persisted sync diff for history browsing. */
+export type InventoryDiffHistoryEntry = {
+  id: string
+  syncedAt: string
+  summary: InventoryDiff['summary']
+  added: InventoryDiffEntry[]
+  removed: InventoryDiffEntry[]
+  changed: InventoryDiffEntry[]
+}
+
+export type InventoryDiffHistoryResult = {
+  entries: InventoryDiffHistoryEntry[]
+}
+
 export type InventorySyncResult = {
   ok: boolean
   path?: string
@@ -1702,6 +1776,27 @@ export type SessionHaulSnapshot = {
   inventoryAdded: InventoryDiffEntry[]
   inventoryChanged: InventoryDiffEntry[]
   lastSyncAt: string | null
+}
+
+/** Unified session view: haul + trades + rivens + arbitration. */
+export type SessionLedgerSnapshot = {
+  startedAt: string
+  haul: SessionHaulSnapshot
+  trades: {
+    soldPlat: number
+    boughtPlat: number
+    netPlat: number
+    count: number
+  }
+  rivens: {
+    scans: number
+    lastWeapon: string | null
+  }
+  arbitration: {
+    runs: number
+    vitus: number
+    rareDrops: number
+  }
 }
 
 /** Fired when a saved OCR display id is gone (Windows remount / driver remap). */
@@ -1742,6 +1837,23 @@ export type MarketUndercutSuggestion = {
   median: number
   suggest: number
   volume: number
+}
+
+export type MarketPricePoint = {
+  at: number
+  avg: number
+  min: number
+  max: number
+  volume: number
+}
+
+/** warframe.market statistics for charts (48h + 90d). */
+export type MarketPriceHistory = {
+  name: string
+  slug: string
+  points48h: MarketPricePoint[]
+  points90d: MarketPricePoint[]
+  error: string | null
 }
 
 export type SetPartOwned = {
@@ -1950,13 +2062,18 @@ export type VoidLensApi = {
     limit?: number
   }) => Promise<SetProgressResult>
   getInventoryDiff: () => Promise<InventoryDiff | null>
+  getInventoryDiffHistory: () => Promise<InventoryDiffHistoryResult>
+  clearInventoryDiffHistory: () => Promise<InventoryDiffHistoryResult>
   getLoadoutSnapshot: () => Promise<LoadoutSnapshot>
   getCircuitTracker: () => Promise<CircuitTrackerSnapshot>
   getArbitrationLog: () => Promise<ArbitrationLogSnapshot>
+  getArbitrationAnalytics: () => Promise<ArbitrationAnalytics>
   clearArbitrationLog: () => Promise<ArbitrationLogSnapshot>
   getSessionHaul: () => Promise<SessionHaulSnapshot>
   clearSessionHaul: () => Promise<SessionHaulSnapshot>
+  getSessionLedger: () => Promise<SessionLedgerSnapshot>
   suggestMarketUndercut: (name: string) => Promise<MarketUndercutSuggestion | null>
+  getMarketPriceHistory: (name: string) => Promise<MarketPriceHistory>
   getEconomyTrend: () => Promise<EconomyTrendResult>
   lfgHealth: () => Promise<{ ok: boolean; listings?: number; error?: string; baseUrl: string }>
   listLfg: (opts?: {

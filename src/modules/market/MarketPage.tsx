@@ -8,6 +8,7 @@ import { useRelicScan } from '../../hooks/useRelicScan'
 import { useRivenScan } from '../../hooks/useRivenScan'
 import { copyText } from '../../lib/tradeClipboard'
 import { MarketSessionGuide } from '../../components/MarketSessionGuide'
+import { MarketPriceHistoryPanel } from '../../components/MarketPriceHistoryPanel'
 import { pushToast } from '../../lib/toast'
 import { MarketBuysPanel } from './MarketBuysPanel'
 import { MarketDealsPanel } from './MarketDealsPanel'
@@ -98,8 +99,22 @@ export function MarketPage({
   onFocusItemConsumed,
 }: Props) {
   const { status: inventory } = useInventory()
-  const [tab, setTab] = useState<MarketTab>('watchlist')
+  const [tab, setTabState] = useState<MarketTab>(
+    (['watchlist', 'buys', 'deals', 'stock', 'rivens', 'orders', 'log', 'contracts', 'account'].includes(
+      settings.marketLastTab,
+    )
+      ? settings.marketLastTab
+      : 'watchlist') as MarketTab,
+  )
+  const setTab = useCallback(
+    (next: MarketTab) => {
+      setTabState(next)
+      onUpdate({ marketLastTab: next })
+    },
+    [onUpdate],
+  )
   const [draft, setDraft] = useState('')
+  const [historyItem, setHistoryItem] = useState<string | null>(null)
   const [quotes, setQuotes] = useState<MarketQuote[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -660,6 +675,15 @@ export function MarketPage({
       <div className="market-layout">
         <div className="market-main">
           {tab === 'watchlist' ? (
+            <>
+              {historyItem ? (
+                <div style={{ marginBottom: 12 }}>
+                  <MarketPriceHistoryPanel
+                    itemName={historyItem}
+                    onClose={() => setHistoryItem(null)}
+                  />
+                </div>
+              ) : null}
             <Panel
               title="Watchlist"
               subtitle="Live floor + median sell (PC) — no account needed"
@@ -728,6 +752,13 @@ export function MarketPage({
                         <span className="market-actions" role="cell">
                           <button
                             className="btn ghost"
+                            type="button"
+                            onClick={() => setHistoryItem(name)}
+                          >
+                            Chart
+                          </button>
+                          <button
+                            className="btn ghost"
                             onClick={() => void window.voidlens.openExternal(itemMarketUrl(name))}
                           >
                             Open
@@ -742,6 +773,7 @@ export function MarketPage({
                 </div>
               )}
             </Panel>
+            </>
           ) : null}
 
           {tab === 'buys' ? (

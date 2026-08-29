@@ -21,6 +21,10 @@ import { ToggleRow } from '../../components/ToggleRow'
 import { InventorySettings } from '../../components/InventorySettings'
 import { UpdateSettings } from '../../components/UpdateSettings'
 import { EconomyTrendPanel } from '../../components/EconomyTrendPanel'
+import { CrashPromptBanner } from '../../components/CrashPromptBanner'
+import { SessionLedgerPanel } from '../../components/SessionLedgerPanel'
+import { UpdateBanner } from '../../components/UpdateBanner'
+import { OcrCalibWizard } from '../../components/OcrCalibWizard'
 import { GettingStarted } from '../../components/GettingStarted'
 import { AppTour, TourStep } from '../../components/AppTour'
 import { StatusStrip } from '../../components/StatusStrip'
@@ -68,6 +72,9 @@ import {
 } from '../../components/PlayProfileSwitcher'
 import { LinuxHealthCard } from '../../components/LinuxHealthCard'
 import { pushToast } from '../../lib/toast'
+import { resolveUiLocale, t } from '../../lib/i18n'
+import { formatSessionLedgerSummary } from '../../lib/sessionLedger'
+import { copyText } from '../../lib/tradeClipboard'
 import { LayoutEditor } from './LayoutEditor'
 import { prettyHotkey } from '../../lib/hotkey'
 import { playScanSound } from '../../lib/sounds'
@@ -222,6 +229,11 @@ export function CompanionApp() {
     [settings.modules],
   )
 
+  const uiLocale = useMemo(
+    () => resolveUiLocale(settings.uiLocale || 'system'),
+    [settings.uiLocale],
+  )
+
   const showWorldstateBanner = Boolean(data.stale || data.error || error)
   const worldstateBannerMessage = error
     ? `Worldstate error: ${error}`
@@ -368,6 +380,66 @@ export function CompanionApp() {
         label: 'Scan relic rewards',
         group: 'Actions',
         run: () => void window.voidlens?.scanRelicRewards(),
+      },
+      {
+        id: 'act-scan-riven',
+        label: 'Scan riven compare',
+        group: 'Actions',
+        run: () => void window.voidlens?.scanRivens(),
+      },
+      {
+        id: 'act-dismiss-relic',
+        label: 'Dismiss relic overlay',
+        group: 'Actions',
+        run: () => void window.voidlens?.clearRelicScan(),
+      },
+      {
+        id: 'act-dismiss-riven',
+        label: 'Dismiss riven overlay',
+        group: 'Actions',
+        run: () => void window.voidlens?.clearRivenScan(),
+      },
+      {
+        id: 'act-quiet-focus',
+        label: 'Toggle quiet focus',
+        group: 'Actions',
+        keywords: 'mission hud fissure',
+        run: () => void window.voidlens?.toggleQuietFocus?.(),
+      },
+      {
+        id: 'act-layout',
+        label: 'Open Layout editor',
+        group: 'Actions',
+        run: () => goTab('layout'),
+      },
+      {
+        id: 'act-updates',
+        label: 'Check for updates',
+        group: 'Actions',
+        run: () => {
+          goTab('settings')
+          void window.voidlens?.checkForUpdates?.()
+        },
+      },
+      {
+        id: 'act-end-session',
+        label: 'End session (copy ledger + clear haul)',
+        group: 'Actions',
+        keywords: 'haul trade summary',
+        run: () => {
+          goTab('dashboard')
+          void (async () => {
+            const ledger = await window.voidlens?.getSessionLedger?.()
+            if (!ledger) return
+            const ok = await copyText(formatSessionLedgerSummary(ledger))
+            await window.voidlens?.clearSessionHaul?.()
+            pushToast(
+              ok ? 'Session summary copied · haul cleared' : 'Haul cleared',
+              ok ? 'ok' : 'warn',
+              4500,
+            )
+          })()
+        },
       },
       {
         id: 'act-hotkeys',
@@ -531,31 +603,6 @@ export function CompanionApp() {
   }, [ready, settings.lastSeenVersion])
 
   useEffect(() => {
-    if (!ready || !settings.crashReportingConsent) return
-    let cancelled = false
-    void (async () => {
-      const pending = await window.voidlens?.getPendingCrash?.()
-      if (cancelled || !pending) return
-      const open = window.confirm(
-        `A previous crash was logged (${pending.label} at ${new Date(pending.at).toLocaleString()}).\n\nOpen a prefilled GitHub bug report? (Nothing is sent until you submit the issue.)`,
-      )
-      if (open) {
-        const tail = (await window.voidlens?.readCrashLogTail?.()) || pending.preview
-        await window.voidlens?.openBugReport?.({
-          title: `[crash] ${pending.label}`,
-          description: `Automatic crash prompt from opt-in crash log.\n\n\`\`\`\n${tail.slice(0, 3500)}\n\`\`\``,
-          category: 'other',
-          includeDiagnostics: true,
-        })
-      }
-      await window.voidlens?.clearPendingCrash?.()
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [ready, settings.crashReportingConsent])
-
-  useEffect(() => {
     if (!window.voidlens?.onRelicSound) return
     return window.voidlens.onRelicSound(() => playScanSound('relic', settings.soundPack))
   }, [settings.soundPack])
@@ -664,7 +711,7 @@ export function CompanionApp() {
                   <rect x="9" y="9" width="5" height="5" rx="1" />
                 </svg>
               </span>
-              Dashboard
+              {t(uiLocale, 'nav.dashboard')}
             </button>
             <button
               className={`nav-btn ${tab === 'modules' ? 'active' : ''}`}
@@ -677,9 +724,75 @@ export function CompanionApp() {
                   <path d="M3 4.5h10M3 8h10M3 11.5h7" strokeLinecap="round" />
                 </svg>
               </span>
-              Modules
+              {t(uiLocale, 'nav.modules')}
             </button>
-            <div className="nav-section">Tools</div>
+            {(settings.navPinnedTabs || []).filter((id) => id !== 'dashboard' && id !== 'modules')
+              .length > 0 ? (
+              <>
+                <div className="nav-section">Favorites</div>
+                {(settings.navPinnedTabs || []).map((id) => {
+                  const labels: Partial<Record<Tab, string>> = {
+                    foundry: 'Foundry',
+                    sets: 'Sets',
+                    relicPlanner: 'Relics',
+                    mastery: 'Mastery',
+                    loadout: 'Loadout',
+                    arbitrationLog: 'Arb haul',
+                    inventory: 'Inventory',
+                    market: 'Market',
+                    lfg: 'LFG',
+                    layout: 'Layout',
+                    settings: 'Settings',
+                    help: 'Help',
+                  }
+                  const label = labels[id as Tab]
+                  if (!label) return null
+                  return (
+                    <button
+                      key={`pin-${id}`}
+                      type="button"
+                      className={`nav-btn ${tab === id ? 'active' : ''}`}
+                      title={`Pinned · right-click current tab to unpin`}
+                      onClick={() => goTab(id as Tab)}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        void updateSettings({
+                          navPinnedTabs: (settings.navPinnedTabs || []).filter((x) => x !== id),
+                        })
+                      }}
+                    >
+                      <span className="nav-btn__icon" aria-hidden>
+                        ★
+                      </span>
+                      {label}
+                    </button>
+                  )
+                })}
+              </>
+            ) : null}
+            <div className="nav-section">
+              Tools
+              <button
+                type="button"
+                className="nav-section__pin"
+                title={
+                  (settings.navPinnedTabs || []).includes(tab)
+                    ? 'Unpin this tab'
+                    : 'Pin this tab to Favorites'
+                }
+                onClick={() => {
+                  const pinned = settings.navPinnedTabs || []
+                  if (tab === 'dashboard' || tab === 'modules') return
+                  if (pinned.includes(tab)) {
+                    void updateSettings({ navPinnedTabs: pinned.filter((x) => x !== tab) })
+                  } else {
+                    void updateSettings({ navPinnedTabs: [...pinned, tab].slice(0, 8) })
+                  }
+                }}
+              >
+                {(settings.navPinnedTabs || []).includes(tab) ? 'Unpin' : 'Pin'}
+              </button>
+            </div>
             <button
               className={`nav-btn ${tab === 'foundry' ? 'active' : ''}`}
               data-tour="nav-foundry"
@@ -768,7 +881,7 @@ export function CompanionApp() {
                   <path d="M5.5 6.5h5M5.5 9h3.5" strokeLinecap="round" />
                 </svg>
               </span>
-              Inventory
+              {t(uiLocale, 'nav.inventory')}
             </button>
             <button
               className={`nav-btn ${tab === 'market' ? 'active' : ''}`}
@@ -782,7 +895,7 @@ export function CompanionApp() {
                   <path d="M6 12.5V9h4v3.5" strokeLinecap="round" />
                 </svg>
               </span>
-              Market
+              {t(uiLocale, 'nav.market')}
             </button>
             <button
               className={`nav-btn ${tab === 'lfg' ? 'active' : ''}`}
@@ -829,7 +942,7 @@ export function CompanionApp() {
                   />
                 </svg>
               </span>
-              Settings
+              {t(uiLocale, 'nav.settings')}
             </button>
             <button
               className={`nav-btn ${tab === 'help' ? 'active' : ''}`}
@@ -844,7 +957,7 @@ export function CompanionApp() {
                   <circle cx="8" cy="11.2" r="0.6" fill="currentColor" stroke="none" />
                 </svg>
               </span>
-              Help
+              {t(uiLocale, 'nav.help')}
             </button>
             <button
               type="button"
@@ -877,12 +990,9 @@ export function CompanionApp() {
             {tab === 'dashboard' ? (
               <>
                 <header className="page-header">
-                  <h2 className="page-title">Dashboard</h2>
+                  <h2 className="page-title">{t(uiLocale, 'page.dashboard')}</h2>
                   <div className="page-title-rule" />
-                  <p className="page-desc">
-                    Live worldstate for your enabled modules. Keep Warframe in Borderless Windowed so
-                    the overlay can sit above the game.
-                  </p>
+                  <p className="page-desc">{t(uiLocale, 'page.dashboardDesc')}</p>
                 </header>
 
                 <GettingStarted
@@ -975,6 +1085,39 @@ export function CompanionApp() {
                     setSuggestDismissed(profileSuggest?.id ?? null)
                   }
                 />
+
+                <div style={{ marginBottom: 16 }}>
+                  <UpdateBanner />
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  {settings.crashReportingConsent ? <CrashPromptBanner /> : null}
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <OcrCalibWizard
+                    settings={settings}
+                    onUpdate={(partial) => void updateSettings(partial)}
+                    onGoLayout={() => goTab('layout')}
+                    onEnableRelics={() =>
+                      void updateSettings({
+                        modules: { ...settings.modules, relics: true },
+                        onboarding: {
+                          ...settings.onboarding,
+                          modulesTouched: true,
+                        },
+                      })
+                    }
+                    onScanRelic={() => void window.voidlens?.scanRelicRewards()}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <SessionLedgerPanel
+                    uiLocale={settings.uiLocale}
+                    onClearHaul={() => void window.voidlens?.clearSessionHaul?.()}
+                  />
+                </div>
 
                 <div style={{ marginBottom: 16 }}>
                   <EconomyTrendPanel />
@@ -1154,16 +1297,11 @@ export function CompanionApp() {
             {tab === 'modules' ? (
               <>
                 <header className="page-header">
-                  <h2 className="page-title">Modules</h2>
+                  <h2 className="page-title">{t(uiLocale, 'page.modules')}</h2>
                   <div className="page-title-rule" />
                   <p className="page-desc">
-                    Choose what appears in the overlay and dashboard. Foundry, Relic Planner, and
-                    Mastery are companion-only. Enable Relic Recommend for the pre-mission overlay
-                    list (push filters from Relic Planner → Send to overlay). Relic / riven scanning
-                    and inventory tags are live. Assign per-panel hide hotkeys under Settings →
-                    Hotkeys, or use{' '}
-                    <strong>{prettyHotkey(settings.hotkeys.toggleWorldstatePanels)}</strong> to
-                    clear/restore all worldstate panels.
+                    {t(uiLocale, 'page.modulesDesc')}{' '}
+                    <strong>{prettyHotkey(settings.hotkeys.toggleWorldstatePanels)}</strong>
                   </p>
                 </header>
                 <Panel title="Toggleable modules">
@@ -1317,7 +1455,23 @@ export function CompanionApp() {
             ) : null}
 
             {tab === 'inventory' ? (
-              <InventoryPage onOpenSettings={() => goTab('settings')} />
+              <InventoryPage
+                onOpenSettings={() => goTab('settings')}
+                initialKind={settings.inventoryLastKind}
+                initialSearch={settings.inventoryLastSearch}
+                onFiltersChange={(kind, search) => {
+                  window.clearTimeout((window as unknown as { __invFilterT?: number }).__invFilterT)
+                  ;(window as unknown as { __invFilterT?: number }).__invFilterT = window.setTimeout(
+                    () => {
+                      void updateSettings({
+                        inventoryLastKind: kind,
+                        inventoryLastSearch: search,
+                      })
+                    },
+                    400,
+                  )
+                }}
+              />
             ) : null}
 
             {tab === 'market' ? (
@@ -1392,12 +1546,9 @@ export function CompanionApp() {
             {tab === 'settings' ? (
               <>
                 <header className="page-header">
-                  <h2 className="page-title">Settings</h2>
+                  <h2 className="page-title">{t(uiLocale, 'page.settings')}</h2>
                   <div className="page-title-rule" />
-                  <p className="page-desc">
-                    Appearance, hotkeys, inventory sync, and updates. Inventory stays local and
-                    powers “needed for set” relic tags.
-                  </p>
+                  <p className="page-desc">{t(uiLocale, 'page.settingsDesc')}</p>
                 </header>
 
                 <LinuxHealthCard
@@ -1409,9 +1560,52 @@ export function CompanionApp() {
                 />
 
                 <Panel
-                  title="Appearance"
-                  subtitle="Theme applies to the companion and overlay panels"
+                  title={t(uiLocale, 'settings.appearance')}
+                  subtitle={t(uiLocale, 'settings.appearanceDesc')}
                 >
+                  <div className="field" style={{ marginBottom: 12 }}>
+                    <label htmlFor="ui-locale">Language</label>
+                    <select
+                      id="ui-locale"
+                      value={settings.uiLocale || 'system'}
+                      onChange={(e) =>
+                        void updateSettings({
+                          uiLocale: e.target.value as typeof settings.uiLocale,
+                        })
+                      }
+                    >
+                      <option value="system">System default</option>
+                      <option value="en">English</option>
+                      <option value="es">Español</option>
+                      <option value="fr">Français</option>
+                      <option value="de">Deutsch</option>
+                      <option value="pt">Português</option>
+                      <option value="ru">Русский</option>
+                      <option value="zh">中文</option>
+                    </select>
+                    <p className="muted" style={{ marginTop: 6, fontSize: '0.75rem' }}>
+                      Companion chrome strings (partial packs). Overlay OCR and item names stay English.
+                    </p>
+                  </div>
+                  <div className="field" style={{ marginBottom: 12 }}>
+                    <label htmlFor="overlay-density">Overlay density</label>
+                    <select
+                      id="overlay-density"
+                      value={settings.overlayDensity || 'normal'}
+                      onChange={(e) =>
+                        void updateSettings({
+                          overlayDensity: e.target.value as typeof settings.overlayDensity,
+                        })
+                      }
+                    >
+                      <option value="compact">Compact</option>
+                      <option value="normal">Normal</option>
+                      <option value="readable">Readable</option>
+                    </select>
+                    <p className="muted" style={{ marginTop: 6, fontSize: '0.75rem' }}>
+                      Compact tightens panels; Readable bumps scale and spacing.
+                    </p>
+                  </div>
                   <p className="theme-group-label">Dark palettes</p>
                   <div className="theme-grid">
                     {themeIdsByMode('dark').map((id) => {
@@ -1803,6 +1997,22 @@ export function CompanionApp() {
                     onChange={(enabled) => void updateSettings({ overlayOnlyInWarframe: enabled })}
                   />
                   <ToggleRow
+                    label="Auto-scan only when Warframe focused"
+                    description="EE.log relic/riven auto-detect waits until Warframe is foreground (manual hotkeys always work)."
+                    checked={settings.requireWarframeFocusForAutoScan !== false}
+                    onChange={(enabled) =>
+                      void updateSettings({ requireWarframeFocusForAutoScan: enabled })
+                    }
+                  />
+                  <ToggleRow
+                    label="Minimize companion while playing"
+                    description="When Warframe is focused, minimize this window. Restore from tray or companion hotkey."
+                    checked={Boolean(settings.autoMinimizeCompanionOnWarframeFocus)}
+                    onChange={(enabled) =>
+                      void updateSettings({ autoMinimizeCompanionOnWarframeFocus: enabled })
+                    }
+                  />
+                  <ToggleRow
                     label="Move panels (in-game)"
                     description={`${prettyHotkey(settings.hotkeys.editLayout)} unlocks click-through so you can drag. Prefer Layout for a mock preview.`}
                     checked={settings.layoutEditMode}
@@ -1814,7 +2024,7 @@ export function CompanionApp() {
 
                 <div className="grid-2">
 
-                  <Panel title="Companion">
+                  <Panel title={t(uiLocale, 'settings.companion')}>
                     <ToggleRow
                       label="Quiet launch (tray)"
                       description="After first-run checklist, start minimized to the tray"
@@ -1855,7 +2065,7 @@ export function CompanionApp() {
                     />
                     <ToggleRow
                       label="Opt-in crash log"
-                      description="Append main-process crashes to a local file and offer a GitHub bug report on next launch (nothing is sent automatically)"
+                      description="Append main-process crashes to a local file. On next launch, a banner offers a prefilled GitHub issue (nothing is sent until you submit). See Help → Crash reports."
                       checked={settings.crashReportingConsent}
                       onChange={(enabled) => void updateSettings({ crashReportingConsent: enabled })}
                     />

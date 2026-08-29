@@ -6,6 +6,7 @@ import type {
   InventoryDiff,
 } from '../../../shared/types'
 import { EmptyState } from '../../components/EmptyState'
+import { InventoryDiffHistoryPanel } from '../../components/InventoryDiffHistoryPanel'
 import { Panel } from '../../components/Panel'
 import { useInventory } from '../../hooks/useInventory'
 import { copyText, formatSellablesDump } from '../../lib/tradeClipboard'
@@ -13,6 +14,9 @@ import './inventory.css'
 
 type Props = {
   onOpenSettings: () => void
+  initialKind?: string
+  initialSearch?: string
+  onFiltersChange?: (kind: string, search: string) => void
 }
 
 type KindFilter = InventoryBrowseKind | 'all' | 'sellable' | 'ducats'
@@ -58,11 +62,16 @@ function kindLabel(kind: InventoryBrowseKind): string {
   }
 }
 
-export function InventoryPage({ onOpenSettings }: Props) {
+export function InventoryPage({
+  onOpenSettings,
+  initialKind,
+  initialSearch,
+  onFiltersChange,
+}: Props) {
   const { status, busy, message, syncFromGame, refresh } = useInventory()
-  const [search, setSearch] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [kind, setKind] = useState<KindFilter>('all')
+  const [search, setSearch] = useState(initialSearch || '')
+  const [debouncedSearch, setDebouncedSearch] = useState(initialSearch || '')
+  const [kind, setKind] = useState<KindFilter>((initialKind as KindFilter) || 'all')
   const [rows, setRows] = useState<InventoryBrowseItem[]>([])
   const [loading, setLoading] = useState(false)
   const [listBusy, setListBusy] = useState<string | null>(null)
@@ -74,6 +83,10 @@ export function InventoryPage({ onOpenSettings }: Props) {
     const t = window.setTimeout(() => setDebouncedSearch(search.trim()), SEARCH_DEBOUNCE_MS)
     return () => window.clearTimeout(t)
   }, [search])
+
+  useEffect(() => {
+    onFiltersChange?.(kind, search)
+  }, [kind, search, onFiltersChange])
 
   const load = useCallback(async () => {
     if (!window.voidlens?.browseInventory) return
@@ -334,6 +347,10 @@ export function InventoryPage({ onOpenSettings }: Props) {
           )}
         </ul>
       </Panel>
+
+      <div style={{ marginTop: 16 }}>
+        <InventoryDiffHistoryPanel />
+      </div>
     </div>
   )
 }

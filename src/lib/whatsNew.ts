@@ -381,6 +381,24 @@ export const WHATS_NEW: Record<string, string[]> = {
   '0.9.83': [
     'Riven grader overlay auto-dismisses when the Cycle compare screen leaves (OCR watch)',
   ],
+  '0.9.84': [
+    'Relic reward overlay auto-dismisses when the pick screen leaves (OCR watch)',
+    'Arbitration analytics: persisted runs, Vitus/hr, by-node and by-day breakdown',
+    'Session ledger on Dashboard (relics, trades, rivens, arbitration this session)',
+    'Inventory trust: helper version, numeric age, gruzzle → import fallback tip',
+    'Inventory history: browse diffs across syncs; Market watchlist Chart (48h/90d)',
+    'Crash → GitHub issue path documented (Help + banner); Linux parity matrix doc',
+    'UI language setting (EN/ES/FR packs for companion chrome; more locales stubbed)',
+  ],
+  '0.9.85': [
+    'Overlay status chip: OCR phases + inventory stale with Sync action',
+    'Auto-scan only when Warframe focused (setting); fewer surprise OCR popups',
+    'Click-to-copy fissure nodes; LFG/relic copy toasts; ErrorFixBar on relic OCR fails',
+    'Overlay density Compact/Normal/Readable; nav Favorites pin; richer Ctrl+K actions',
+    'First-run Relics + OCR path; OCR calibration wizard; Update banner with notes',
+    'Persist Market tab + Inventory filters; optional minimize companion while playing',
+    'Overlay inventory sync chip; End session copies ledger + clears haul; more UI i18n',
+  ],
 }
 
 export function getWhatsNewBullets(version: string): string[] {

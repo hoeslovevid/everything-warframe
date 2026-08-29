@@ -391,13 +391,14 @@ export const WHATS_NEW: Record<string, string[]> = {
     'UI language setting (EN/ES/FR packs for companion chrome; more locales stubbed)',
   ],
   '0.9.85': [
-    'Overlay status chip: OCR phases + inventory stale with Sync action',
-    'Auto-scan only when Warframe focused (setting); fewer surprise OCR popups',
-    'Click-to-copy fissure nodes; LFG/relic copy toasts; ErrorFixBar on relic OCR fails',
-    'Overlay density Compact/Normal/Readable; nav Favorites pin; richer Ctrl+K actions',
-    'First-run Relics + OCR path; OCR calibration wizard; Update banner with notes',
-    'Persist Market tab + Inventory filters; optional minimize companion while playing',
-    'Overlay inventory sync chip; End session copies ledger + clears haul; more UI i18n',
+    'Relic reward overlay auto-dismisses when the pick screen leaves (OCR watch)',
+    'Arbitration analytics + Session ledger (End session copies summary + clears haul)',
+    'Inventory trust, diff history; Market watchlist Chart (48h/90d)',
+    'Overlay status chip (OCR + inventory sync/stale); density Compact/Normal/Readable',
+    'Auto-scan only when Warframe focused; optional minimize companion while playing',
+    'OCR calibration wizard; first-run Relics path; Update banner; ErrorFixBar',
+    'Click-to-copy + toasts; nav Favorites; richer Ctrl+K; persist Market/Inventory filters',
+    'UI language EN/ES/FR; Crash → GitHub docs; Linux parity matrix',
   ],
 }
 

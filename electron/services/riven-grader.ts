@@ -25,7 +25,20 @@ const STAT_META: Record<
     unit: '%',
     weight: 1.25,
   },
-  multishot: { aliases: ['multishot'], max: 110, unit: '%', weight: 1.3 },
+  multishot: {
+    aliases: [
+      'multishot',
+      'multieshot',
+      'multisho',
+      'mltishot',
+      'multistot',
+      'kmiiltiahnt',
+      'mlltiahnt',
+    ],
+    max: 110,
+    unit: '%',
+    weight: 1.3,
+  },
   damage: { aliases: ['damage', 'base damage'], max: 200, unit: '%', weight: 1.1 },
   'fire rate': { aliases: ['fire rate', 'attack speed'], max: 90, unit: '%', weight: 1.0 },
   'status chance': {
@@ -127,27 +140,97 @@ function scrubOcr(s: string) {
     // Elemental icon often splits "Cold" → "Col in" / "Col d" / bare "Col"
     .replace(/\bCol\s*i?n\b/gi, 'Cold')
     .replace(/\bCol\s*d\b/gi, 'Cold')
-    .replace(/\bC0ld\b/gi, 'Cold')
+    .replace(/\bC0ld\b|\b0old\b|\*0+l\b/gi, 'Cold')
     .replace(/\bCol\b/gi, 'Cold')
     .replace(/\bPun(?:ct(?:ure)?)?\b/gi, 'Puncture')
     .replace(/\bH0t\b|\bHea1\b/gi, 'Heat')
     .replace(/\bT0xin\b|\bToxln\b/gi, 'Toxin')
     .replace(/\bElec(?:tr(?:icity)?)?\b/gi, 'Electricity')
+    .replace(/Electrioil[yi]|Eleotrioity|Eleotioity|Electrioity|4Eleotrioity/gi, 'Electricity')
     .replace(/lnfected|lnfeste[dc]?|1nfested/gi, 'Infested')
+    .replace(/[\u4e00-\u9fff]/g, '') // CJK OCR junk (e.g. 名)
+    .replace(/\*/g, '%')
     .replace(/Grlneer|Grinecr/gi, 'Grineer')
-    .replace(/Corp[uü]s/gi, 'Corpus')
+    .replace(/Corp[uü]e|Corp[uü]s/gi, 'Corpus')
     .replace(/\blgnis\b/gi, 'Ignis')
     .replace(/Mu1ti/gi, 'Multi')
+    // Multishot OCR soup: KMiiltiahnt / Mllltiahnt / Mu1tish0t / etc.
+    .replace(/\bK?M[il1I|]{1,4}t[a-z]{2,8}\b/gi, 'Multishot')
+    .replace(/Multie?sho[tl1!]|Mltishot|Multistot|Multisho(?:t)?/gi, 'Multishot')
+    .replace(/Multish0t|Multisho(?:t)?/gi, 'Multishot')
     .replace(/Critica1/gi, 'Critical')
     .replace(/Critica?\s*Cha(?:n(?:ce)?)?/gi, 'Critical Chance')
+    // Truncated "Critical Dan" / "Critical Damag" (Tess cuts the line)
+    .replace(/\bCritical\s+Dan(?:a?g(?:e)?)?\b/gi, 'Critical Damage')
+    .replace(/\bCrit\s+Dam(?:a?g(?:e)?)?\b/gi, 'Critical Damage')
     .replace(/\bChanc[ec]\b/gi, 'Chance')
-    .replace(/Damaqe|Damag[eo]/gi, 'Damage')
+    .replace(/Damaqe|Damag[eo]|bamage|bemuge|bamsge|paage/gi, 'Damage')
     .replace(/\bDamageto\b/gi, 'Damage to')
     .replace(/\bDamage\s*2\s*/gi, 'Damage to ')
-    .replace(/Multish0t|Multisho(?:t)?/gi, 'Multishot')
+    // "Damage to I" / "Damage to In" — cut-off Infested
+    .replace(/\bDamage\s+to\s+I(?:n(?:f(?:e(?:s(?:t(?:e[dc]?)?)?)?)?)?)?\b/gi, 'Damage to Infested')
+    .replace(/\bDamage\s+to\s+C(?:o(?:r(?:p(?:u[se]?)?)?)?)?\b/gi, 'Damage to Corpus')
+    .replace(/\bDamage\s+to\s+G(?:r(?:i(?:n(?:e(?:e?r?)?)?)?)?)?\b/gi, 'Damage to Grineer')
     .replace(/Punch\s*Thr(?:ough)?/gi, 'Punch Through')
-    // "x1 64" / "x l.64" OCR slips before faction lines
+    .replace(/\bImpast\b|\b1mpact\b|\blmpact\b|\bMlmpact\b|\bNImpact\b|\b入Impact\b/gi, 'Impact')
+    .replace(/\bImpact\b/gi, 'Impact')
+    // Reload Speed OCR slips: Re100d / Be9ed / Rd0a2 / Spehed
+    .replace(/\bRe\d*d\s*Spe+[d]?/gi, 'Reload Speed')
+    .replace(/\bBe\d*ed\s*Spe+[d]?/gi, 'Reload Speed')
+    .replace(/\bR[de]\w{0,3}d\s*Spe[eo]d\b/gi, 'Reload Speed')
+    .replace(/\bRelo(?:ad)?\s*Spe[eo]d\b/gi, 'Reload Speed')
+    .replace(/\bFire\s*Rat[eo]\b/gi, 'Fire Rate')
+    .replace(/\bFie\s*Fiel?ate\b/gi, 'Fire Rate')
+    .replace(/\bMagez(?:ine|ing)\b|\bMagazin[ec]\b/gi, 'Magazine')
+    .replace(/\bCapaoil[yi]\b|\bCapacit[yi]\b|\bCapaciy\b/gi, 'Capacity')
+    // Faction lines garbled: "ta toms" / "to Corpue" / "lnfeste"
+    .replace(/\b(?:Damage\s+)?(?:to\s+)?(?:ta\s+)?toms\b/gi, 'Damage to Corpus')
+    .replace(/\bCorp(?:ue|u[se]|e)\b/gi, 'Corpus')
+    .replace(/\b[li1]nfeste[dc]?\b/gi, 'Infested')
+    // "+163s Damage" / "+37.5s Magazine" — trailing s/t instead of %
+    .replace(/([+\-]\d+(?:[.,]\d+)?)[st:](?=\s|$|[A-Za-z])/gi, '$1%')
+    // "+1NK8 7%" — letters inside the value (N→0, K→5, …) + space decimal
+    .replace(/([+\-])([0-9A-Za-z]{2,5})\s+(\d)\s*%/g, (_, sign, raw, frac) => {
+      const map: Record<string, string> = {
+        O: '0',
+        o: '0',
+        D: '0',
+        N: '0',
+        n: '0',
+        I: '1',
+        l: '1',
+        S: '5',
+        s: '5',
+        B: '8',
+        K: '5',
+        k: '5',
+        Z: '2',
+        G: '6',
+      }
+      let digits = ''
+      for (const ch of String(raw)) {
+        if (/\d/.test(ch)) digits += ch
+        else if (map[ch]) digits += map[ch]
+      }
+      if (digits.length >= 2 && digits.length <= 4) {
+        if (digits.length === 4) digits = digits.slice(0, 3)
+        return `${sign}${digits}.${frac}%`
+      }
+      return `${sign}${raw} ${frac}%`
+    })
+    // "+120 4%" / "+120 4 Multishot" — space instead of decimal
+    .replace(/([+\-]\d{2,3})\s+(\d)\s*%/g, '$1.$2%')
+    .replace(/([+\-]\d{2,3})\s+(\d)(?=\s*[A-Za-z])/g, '$1.$2')
+    // "+1092% Zoom" / "+1204% Multishot" — Tess dropped the decimal point
+    .replace(/([+\-])(\d{2,3})(\d)(%)/g, (_, sign, whole, frac, pct) => {
+      const n = Number(whole + frac)
+      return n >= 400 ? `${sign}${whole}.${frac}${pct}` : `${sign}${whole}${frac}${pct}`
+    })
+    // "x1 64" / "x l.64" / "x1 .34" / "xo.75" OCR slips before faction lines
+    .replace(/\bx\s*[oO]\s*[.,]?\s*(\d+)/gi, 'x0.$1')
     .replace(/\bx\s*[lI|]\s*[.,](\d+)/gi, 'x1.$1')
+    .replace(/\bx\s*0\s*[.,]\s*(\d+)/gi, 'x0.$1')
+    .replace(/\bx\s*1\s+[.,]\s*(\d+)/gi, 'x1.$1')
     .replace(/\bx\s*(\d)\s+(\d{1,2})\b/gi, 'x$1.$2')
     .replace(/%\s*\*/g, '% ')
     .replace(/\*\s*%/g, '%')
@@ -176,11 +259,25 @@ function normalize(s: string) {
 function matchStat(rawName: string) {
   const n = normalize(rawName)
   if (!n || n.length < 3) return null
+  // Prefer faction lines before bare "damage" can steal "Damage to I…".
+  const faction = n.match(/^damage\s+to\s+(infested|corpus|grineer)\b/)
+  if (faction) {
+    const canon = `damage to ${faction[1]}`
+    return { canon, meta: STAT_META[canon] }
+  }
+  if (/^critical\s+da/.test(n) && !/\bchance\b/.test(n) && !/\bslide\b/.test(n)) {
+    return { canon: 'critical damage', meta: STAT_META['critical damage'] }
+  }
+  if (/^crit\s+da/.test(n) && !/\bchance\b/.test(n)) {
+    return { canon: 'critical damage', meta: STAT_META['critical damage'] }
+  }
   const hasSlide = /\bslide\b/.test(n)
   let best: { canon: string; meta: (typeof STAT_META)[string] } | null = null
   let bestScore = -1
   for (const [canon, meta] of Object.entries(STAT_META)) {
     if (canon === 'slide critical chance' && !hasSlide) continue
+    // Don't let plain "damage" absorb "damage to …" fragments.
+    if (canon === 'damage' && /\bto\b/.test(n)) continue
     for (const alias of meta.aliases) {
       let score = -1
       if (n === alias) score = 1000 + alias.length
@@ -217,10 +314,12 @@ function resolveXToken(
 ): { valueRaw: string; percent: string } | null {
   const meta = STAT_META[canon]
   if (!Number.isFinite(n) || n <= 0) return null
-  if (isFactionDamageCanon(canon) && n >= 1 && n < 3.5) {
+  // Faction mults are true multipliers: x1.5 = +50%, x0.75 = -25%.
+  if (isFactionDamageCanon(canon) && n > 0.15 && n < 3.5) {
     const pct = Math.round((n - 1) * 1000) / 10
-    if (meta && pct > meta.max * 1.85) return null
-    return { valueRaw: `+${pct}`, percent: '%' }
+    if (meta && Math.abs(pct) > meta.max * 1.85) return null
+    const sign = pct >= 0 ? '+' : ''
+    return { valueRaw: `${sign}${pct}`, percent: '%' }
   }
   if (meta?.unit === '%' && n < 3.5 && meta.max >= 20) {
     const pct = Math.round(n * 100) / 10
@@ -463,11 +562,14 @@ function extractStatsFromBlob(ocrText: string): RivenStatLine[] {
       grineer: 'damage to grineer',
     }
     const factionRe =
-      /[x×]\s*(\d+[.,]\d+)\s+(?:damage\s+to\s+)?(infested|corpus|grineer)\b|(\d+[.,]\d+)\s*[x×]\s+(?:damage\s+to\s+)?(infested|corpus|grineer)\b/gi
+      /[x×]\s*(\d+[.,]\d+)\s+(?:damage\s+to\s+)?(infested|corpus|grineer|in(?:f(?:e(?:st(?:ed)?)?)?)?|cor(?:p(?:us)?)?|gri(?:n(?:eer)?)?)\b|(\d+[.,]\d+)\s*[x×]\s+(?:damage\s+to\s+)?(infested|corpus|grineer)\b/gi
     let fm: RegExpExecArray | null
     while ((fm = factionRe.exec(blob)) != null) {
       const nRaw = fm[1] || fm[3]
-      const faction = (fm[2] || fm[4] || '').toLowerCase()
+      let faction = (fm[2] || fm[4] || '').toLowerCase()
+      if (faction.startsWith('in')) faction = 'infested'
+      else if (faction.startsWith('cor')) faction = 'corpus'
+      else if (faction.startsWith('gri')) faction = 'grineer'
       const canon = factionCanon[faction]
       if (!canon || !nRaw) continue
       const n = Number(String(nRaw).replace(',', '.'))

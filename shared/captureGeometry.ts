@@ -98,17 +98,16 @@ export function mergeOcrScanRegions(
  * the diamond art so edge-hugging values like `x1.64` stay inside the frame.
  */
 export function rivenCompareRegions(width: number, height: number): CaptureRegion[] {
-  const gap = Math.round(width * 0.01)
-  // Slightly earlier / wider so edge-hugging "x1.64" multipliers stay in-frame.
-  const startX = Math.round(width * 0.348)
-  const y = Math.round(height * 0.12)
+  const gap = Math.round(width * 0.012)
+  // Tighter crops — less void/bloom so %-bands land on the diamond text panel.
+  const startX = Math.round(width * 0.355)
+  const y = Math.round(height * 0.13)
 
-  // Current / selected card is rendered larger than the reroll card.
-  const leftW = Math.round(width * 0.24)
-  const leftH = Math.round(height * 0.7)
-  const rightW = Math.round(width * 0.22)
-  const rightH = Math.round(height * 0.64)
-  const rightY = y + Math.round(height * 0.03)
+  const leftW = Math.round(width * 0.225)
+  const leftH = Math.round(height * 0.64)
+  const rightW = Math.round(width * 0.205)
+  const rightH = Math.round(height * 0.58)
+  const rightY = y + Math.round(height * 0.035)
 
   return [
     { x: startX, y, width: leftW, height: leftH },
@@ -116,16 +115,34 @@ export function rivenCompareRegions(width: number, height: number): CaptureRegio
   ]
 }
 
-/** Lower portion of a card crop — where rolled stats usually sit. */
+/** Lower portion of a card crop — name + rolled stats (skip weapon art). */
 export function rivenCardStatsRegion(card: CaptureRegion): CaptureRegion {
-  const topSkip = Math.round(card.height * 0.26)
+  // Full Cycle crops are ~50% art on top; text block sits in the lower half.
+  const topSkip = Math.round(card.height * 0.48)
   return {
-    x: card.x + Math.round(card.width * 0.03),
+    x: card.x + Math.round(card.width * 0.04),
     y: card.y + topSkip,
-    width: Math.round(card.width * 0.94),
-    height: Math.round(card.height * 0.66),
+    width: Math.round(card.width * 0.92),
+    height: Math.round(card.height * 0.36),
   }
 }
+
+/**
+ * Tiny SINGLE_LINE / panel slices inside a full Cycle card crop (fractions of H).
+ * Captures include purple bloom above the diamond — name/stats sit in the lower
+ * ~third (≈64–92%), not the mid-card art. Empirically tuned on 1440p Cycle crops.
+ */
+export const RIVEN_CARD_LINE_BANDS = {
+  /** Full name + stats panel (primary Tess SINGLE_BLOCK pass). Skip upper art. */
+  panel: { top: 0.68, height: 0.28 },
+  name: { top: 0.7, height: 0.07 },
+  stats: [
+    { top: 0.76, height: 0.05 },
+    { top: 0.81, height: 0.05 },
+    { top: 0.86, height: 0.05 },
+    { top: 0.91, height: 0.05 },
+  ],
+} as const
 
 /**
  * Horizontal grader strip spanning both Cycle cards (like the relic strip).
@@ -252,7 +269,7 @@ export function defaultRivenCardNorms(
  * built-in WFInfo geometry.
  *
  * Layout-editor strips are often drawn over whole reward cards. OCR only needs
- * the name line — a tall full-card strip feeds art/chat/"Close" into Paddle and
+ * the name line — a tall full-card strip feeds art/chat/"Close" into OCR and
  * fails (especially on 3-player screens). Tall custom strips fall back to
  * built-in geometry; thin name-band strips are still respected.
  */

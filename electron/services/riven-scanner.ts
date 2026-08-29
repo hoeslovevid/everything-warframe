@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { app } from 'electron'
 import { RivenScanState } from '../../shared/types'
-import { recognizeRivenBlocks, warmupOcr } from './ocr'
+import { recognizeRivenBlocks, recognizeRivenStatsFast, warmupOcr } from './ocr'
 import { sampleOcrUiScore, waitForOcrUiReady } from './ocr-readiness'
 import { parseRivenOcr, recommendRolls } from './riven-grader'
 import { enrichRivensWithMarket } from './riven-market'
@@ -171,8 +171,31 @@ export async function scanRivens(trigger: 'manual' | 'log' = 'manual'): Promise<
     active: true,
     trigger,
     error: null,
+    current: null,
+    reroll: null,
+    recommendation: 'none',
+    recommendationNote: null,
   }
   emit()
+
+  const applyPartial = (
+    current: ReturnType<typeof parseRivenOcr> | null,
+    reroll: ReturnType<typeof parseRivenOcr> | null,
+  ) => {
+    if (!current && !reroll) return
+    const reco = recommendRolls(current, reroll)
+    state = {
+      ...state,
+      scanning: true,
+      active: true,
+      error: null,
+      current,
+      reroll,
+      recommendation: reco.recommendation,
+      recommendationNote: reco.note,
+    }
+    emit()
+  }
 
   try {
     // Warm persistent capture when cold — no artificial settle when already live.
@@ -181,8 +204,13 @@ export async function scanRivens(trigger: 'manual' | 'log' = 'manual'): Promise<
     }
 
     if (trigger === 'log') {
-      // Poll until Cycle cards look painted (cap = old fixed animation delay).
-      await waitForOcrUiReady('riven')
+      // Live stream: skip multi-sample readiness (full-frame encode was ~4s).
+      // Cold stream: short readiness poll on scaled JPEGs.
+      if (isPersistentCaptureLive()) {
+        // Stream already live — no settle delay.
+      } else {
+        await waitForOcrUiReady('riven', { maxMs: process.platform === 'linux' ? 700 : 400 })
+      }
     }
 
     const capture = await captureRivenCompare()
@@ -195,33 +223,35 @@ export async function scanRivens(trigger: 'manual' | 'log' = 'manual'): Promise<
     }
     let crops = capture.crops
 
-    let texts = await recognizeRivenBlocks(crops)
+    // Fast path: tiny name + per-stat line OCR (Tesseract SINGLE_LINE pool).
+    let texts = await recognizeRivenStatsFast(crops)
     console.info(
-      '[Everything Warframe] Riven OCR current:\n' + (texts[0] || '(empty)').slice(0, 400),
+      '[Everything Warframe] Riven OCR fast current:\n' + (texts[0] || '(empty)').slice(0, 400),
     )
     console.info(
-      '[Everything Warframe] Riven OCR reroll:\n' + (texts[1] || '(empty)').slice(0, 400),
+      '[Everything Warframe] Riven OCR fast reroll:\n' + (texts[1] || '(empty)').slice(0, 400),
     )
     let left = parseRivenOcr(texts[0] || '', 'current')
     let right = parseRivenOcr(texts[1] || '', 'reroll')
     let leftOk = left.stats.length > 0
     let rightOk = right.stats.length > 0
     console.info(
-      `[Everything Warframe] Riven parse: current=${left.stats.length} stats (${left.weapon}), ` +
-        `reroll=${right.stats.length} stats (${right.weapon})` +
-        (left.stats.length
-          ? ` | current=[${left.stats.map((s) => `${s.value < 0 || s.negative ? '-' : '+'}${Math.abs(s.value)}${s.unit === '%' ? '%' : ''} ${s.name}`).join('; ')}]`
-          : '') +
-        (right.stats.length
-          ? ` | reroll=[${right.stats.map((s) => `${s.value < 0 || s.negative ? '-' : '+'}${Math.abs(s.value)}${s.unit === '%' ? '%' : ''} ${s.name}`).join('; ')}]`
-          : ''),
+      `[Everything Warframe] Riven parse fast: current=${left.stats.length} stats (${left.weapon}), ` +
+        `reroll=${right.stats.length} stats (${right.weapon})`,
     )
 
-    const leftWeak = !leftOk || left.stats.length < 3
-    const rightWeak = !rightOk || right.stats.length < 3
+    if (leftOk || rightOk) {
+      applyPartial(leftOk ? left : null, rightOk ? right : null)
+    }
 
-    // Deep-OCR only the weak card(s) — avoid re-running a good side.
+    // Deep only when a side has fewer than 2 parsed stats.
+    const leftWeak = left.stats.length < 2
+    const rightWeak = right.stats.length < 2
+
     if (leftWeak || rightWeak) {
+      console.info(
+        `[Everything Warframe] Riven OCR deep starting (weak: current=${leftWeak} reroll=${rightWeak})`,
+      )
       const deepInputs: Buffer[] = []
       const deepSides: Array<'current' | 'reroll'> = []
       if (leftWeak) {
@@ -249,21 +279,18 @@ export async function scanRivens(trigger: 'manual' | 'log' = 'manual'): Promise<
       console.info(
         `[Everything Warframe] Riven deep OCR: current=${left.stats.length} stats, reroll=${right.stats.length} stats`,
       )
+      if (leftOk || rightOk) {
+        applyPartial(leftOk ? left : null, rightOk ? right : null)
+      }
     }
 
-    let weakRead = !leftOk || !rightOk || left.stats.length < 3 || right.stats.length < 3
-
-    if (weakRead) {
+    // One recapture only if both sides are empty — never a full deep cascade again.
+    if (!leftOk && !rightOk) {
       saveRivenDebugCrops(crops, 'weak', capture.fullPng)
-    }
-
-    // Retry capture when still weak — common while Cycle UI is animating.
-    if (weakRead) {
-      const retryDelay = process.platform === 'linux' ? 350 : 150
-      await new Promise((r) => setTimeout(r, retryDelay))
+      await new Promise((r) => setTimeout(r, process.platform === 'linux' ? 200 : 80))
       const retry = await captureRivenCompare()
       if (retry && retry.crops.length >= 2) {
-        const retryTexts = await recognizeRivenBlocks(retry.crops, { deep: true })
+        const retryTexts = await recognizeRivenStatsFast(retry.crops)
         console.info(
           '[Everything Warframe] Riven OCR retry current:\n' +
             (retryTexts[0] || '(empty)').slice(0, 400),
@@ -280,10 +307,12 @@ export async function scanRivens(trigger: 'manual' | 'log' = 'manual'): Promise<
         rightOk = right.stats.length > 0
         texts = retryTexts
         crops = retry.crops
-        if (!leftOk || !rightOk || left.stats.length < 3 || right.stats.length < 3) {
+        if (!leftOk && !rightOk) {
           saveRivenDebugCrops(retry.crops, 'retry', retry.fullPng)
         }
       }
+    } else if (left.stats.length < 2 || right.stats.length < 2) {
+      saveRivenDebugCrops(crops, 'weak', capture.fullPng)
     }
 
     if (!leftOk && !rightOk) {

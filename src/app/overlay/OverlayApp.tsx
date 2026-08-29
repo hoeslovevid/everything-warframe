@@ -168,11 +168,12 @@ export function OverlayApp() {
 
   const ocrPhase = (() => {
     if (inventoryProgress) return 'syncing' as const
+    // Partial results while scanning still count as “ready” for the chip.
+    if (relicScan.active && relicScan.rewards.length > 0) return 'done' as const
+    if (rivenScan.active && (rivenScan.current || rivenScan.reroll)) return 'done' as const
     if (relicScan.scanning || rivenScan.scanning) return 'reading' as const
     if (relicScan.error || rivenScan.error) return 'error' as const
     if (inventory.stale && inventory.loaded) return 'stale' as const
-    if (relicScan.active && relicScan.rewards.length > 0) return 'done' as const
-    if (rivenScan.active && (rivenScan.current || rivenScan.reroll)) return 'done' as const
     return 'idle' as const
   })()
   const ocrLabel =
@@ -185,9 +186,13 @@ export function OverlayApp() {
           ? 'OCR · reading relics'
           : 'OCR · reading rivens'
         : ocrPhase === 'done'
-          ? relicScan.active && relicScan.rewards.length
-            ? 'OCR · relic ready'
-            : 'OCR · riven ready'
+          ? relicScan.scanning
+            ? 'OCR · relics…'
+            : rivenScan.scanning
+              ? 'OCR · rivens…'
+              : relicScan.active && relicScan.rewards.length
+                ? 'OCR · relic ready'
+                : 'OCR · riven ready'
           : ocrPhase === 'error'
             ? 'OCR · failed'
             : ocrPhase === 'stale'

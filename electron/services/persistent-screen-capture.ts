@@ -9,7 +9,14 @@ import { resolveOcrDisplay } from './display-target'
  * captures are just frame grabs (much faster than desktopCapturer thumbnails).
  */
 
-type FrameResult = { png: Buffer; width: number; height: number }
+type FrameResult = {
+  png: Buffer
+  width: number
+  height: number
+  /** Unscaled video size when `scale` < 1. */
+  sourceWidth?: number
+  sourceHeight?: number
+}
 
 let win: BrowserWindow | null = null
 let initPromise: Promise<void> | null = null
@@ -34,7 +41,7 @@ const CAPTURE_PAGE = `<!DOCTYPE html>
     stream = await navigator.mediaDevices.getDisplayMedia({
       audio: false,
       video: {
-        frameRate: { ideal: 8, max: 15 },
+        frameRate: { ideal: 15, max: 30 },
       },
     })
     video = document.createElement('video')
@@ -42,7 +49,6 @@ const CAPTURE_PAGE = `<!DOCTYPE html>
     video.playsInline = true
     video.srcObject = stream
     await video.play()
-    // Wait for dimensions
     for (let i = 0; i < 40 && (!video.videoWidth || !video.videoHeight); i++) {
       await new Promise((r) => setTimeout(r, 25))
     }
@@ -62,16 +68,47 @@ const CAPTURE_PAGE = `<!DOCTYPE html>
     const w = video.videoWidth
     const h = video.videoHeight
     if (!w || !h) throw new Error('capture video has no dimensions')
-    canvas.width = w
-    canvas.height = h
+    // Readiness polls should never encode full 1440p/4K — that alone was multi-second.
+    const scale = Math.min(1, Math.max(0.12, (opts && opts.scale) || 1))
+    const cw = Math.max(1, Math.round(w * scale))
+    const ch = Math.max(1, Math.round(h * scale))
+    canvas.width = cw
+    canvas.height = ch
     const ctx = canvas.getContext('2d', { alpha: false })
-    ctx.drawImage(video, 0, 0, w, h)
-    // PNG for OCR (sharp text); JPEG only for cheap readiness polls.
+    ctx.drawImage(video, 0, 0, cw, ch)
     const wantPng = opts && opts.format === 'png'
+    const quality = (opts && opts.quality) || 0.7
     const dataUrl = wantPng
       ? canvas.toDataURL('image/png')
-      : canvas.toDataURL('image/jpeg', 0.92)
-    return { dataUrl, width: w, height: h }
+      : canvas.toDataURL('image/jpeg', quality)
+    return { dataUrl, width: cw, height: ch, sourceWidth: w, sourceHeight: h }
+  }
+
+  /** Crop regions directly from the live video — no full-desktop PNG encode. */
+  async function grabRegions(regions, opts) {
+    await ensureStream()
+    if (!video) throw new Error('capture stream not ready')
+    const vw = video.videoWidth
+    const vh = video.videoHeight
+    if (!vw || !vh) throw new Error('capture video has no dimensions')
+    const wantPng = !opts || opts.format !== 'jpeg'
+    const out = []
+    for (const r of regions || []) {
+      const x = Math.max(0, Math.min(Math.round(r.x), vw - 1))
+      const y = Math.max(0, Math.min(Math.round(r.y), vh - 1))
+      const width = Math.max(1, Math.min(Math.round(r.width), vw - x))
+      const height = Math.max(1, Math.min(Math.round(r.height), vh - y))
+      const c = document.createElement('canvas')
+      c.width = width
+      c.height = height
+      const ctx = c.getContext('2d', { alpha: false })
+      ctx.drawImage(video, x, y, width, height, 0, 0, width, height)
+      out.push({
+        dataUrl: wantPng ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.92),
+        x, y, width, height,
+      })
+    }
+    return { crops: out, width: vw, height: vh }
   }
 
   async function isLive() {
@@ -87,7 +124,7 @@ const CAPTURE_PAGE = `<!DOCTYPE html>
     canvas = null
   }
 
-  window.__ewCapture = { ensureStream, grabFrame, isLive, stopStream }
+  window.__ewCapture = { ensureStream, grabFrame, grabRegions, isLive, stopStream }
 })()
 </script>
 </body></html>`
@@ -306,22 +343,78 @@ export function cancelPersistentCaptureIdleRelease() {
 export async function grabPersistentFrame(opts?: {
   /** PNG for OCR accuracy; JPEG (default) for readiness polls. */
   format?: 'png' | 'jpeg'
+  /** Downscale factor (0–1). Use ~0.25 for readiness — full-res encode is multi-second. */
+  scale?: number
+  quality?: number
 }): Promise<FrameResult | null> {
   cancelPersistentCaptureIdleRelease()
   const ok = await ensurePersistentCapture()
   if (!ok) return null
   try {
     const format = opts?.format === 'png' ? 'png' : 'jpeg'
-    const frame = await exec<{ dataUrl: string; width: number; height: number }>(
-      `window.__ewCapture.grabFrame(${JSON.stringify({ format })})`,
-    )
+    const scale = opts?.scale
+    const quality = opts?.quality
+    const frame = await exec<{
+      dataUrl: string
+      width: number
+      height: number
+      sourceWidth?: number
+      sourceHeight?: number
+    }>(`window.__ewCapture.grabFrame(${JSON.stringify({ format, scale, quality })})`)
     if (!frame?.dataUrl) return null
     const b64 = frame.dataUrl.replace(/^data:image\/\w+;base64,/, '')
     const png = Buffer.from(b64, 'base64')
-    return { png, width: frame.width, height: frame.height }
+    return {
+      png,
+      width: frame.width,
+      height: frame.height,
+      sourceWidth: frame.sourceWidth || frame.width,
+      sourceHeight: frame.sourceHeight || frame.height,
+    }
   } catch (err) {
     streamReady = false
     console.warn('[Everything Warframe] Persistent frame grab failed', err)
+    return null
+  }
+}
+
+/** Grab only the listed screen regions (card crops) — skips full-desktop encode. */
+export async function grabPersistentRegions(
+  regions: Array<{ x: number; y: number; width: number; height: number }>,
+): Promise<{
+  crops: Buffer[]
+  width: number
+  height: number
+  regions: Array<{ x: number; y: number; width: number; height: number }>
+} | null> {
+  cancelPersistentCaptureIdleRelease()
+  const ok = await ensurePersistentCapture()
+  if (!ok || !regions.length) return null
+  try {
+    const frame = await exec<{
+      crops: Array<{ dataUrl: string; x: number; y: number; width: number; height: number }>
+      width: number
+      height: number
+    }>(`window.__ewCapture.grabRegions(${JSON.stringify(regions)}, ${JSON.stringify({ format: 'png' })})`)
+    if (!frame?.crops?.length) return null
+    const crops = frame.crops.map((c) => {
+      const b64 = c.dataUrl.replace(/^data:image\/\w+;base64,/, '')
+      return Buffer.from(b64, 'base64')
+    })
+    return {
+      crops,
+      width: frame.width,
+      height: frame.height,
+      regions: frame.crops.map((c) => ({
+        x: c.x,
+        y: c.y,
+        width: c.width,
+        height: c.height,
+      })),
+    }
+  } catch (err) {
+    streamReady = false
+    console.warn('[Everything Warframe] Persistent region grab failed', err)
     return null
   }
 }

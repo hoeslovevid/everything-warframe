@@ -289,6 +289,69 @@ export function filterRelicTextPng(png: Buffer, theme: WfThemeId): Buffer {
 }
 
 /**
+ * Isolate Riven card UI text for OCR (black glyphs on white).
+ * Keeps lavender titles AND pale stat lines; drops warm art.
+ * Cycle captures are often dim (gray ~75–140) — do not require bright whites.
+ */
+export function filterRivenTextPng(png: Buffer): Buffer {
+  const img = nativeImage.createFromBuffer(png)
+  const { width, height } = img.getSize()
+  if (width < 8 || height < 8) return png
+
+  const src = Buffer.from(img.toBitmap())
+  const out = Buffer.alloc(src.length)
+  let kept = 0
+  const total = width * height
+
+  for (let i = 0; i + 3 < src.length; i += 4) {
+    const b = src[i]
+    const g = src[i + 1]
+    const r = src[i + 2]
+    const gray = (r * 299 + g * 587 + b * 114) / 1000
+    const maxc = Math.max(r, g, b)
+    const minc = Math.min(r, g, b)
+    const sat = maxc - minc
+    const warmArt = r > b + 24 && r >= g + 4 && maxc >= 100 && sat >= 28
+    // Title: dim-to-bright lavender (b-biased), common on Cycle cards.
+    const lavender =
+      !warmArt &&
+      gray >= 68 &&
+      maxc >= 78 &&
+      b >= r + 4 &&
+      b + 8 >= g &&
+      sat >= 12
+    // Stats: pale / cool-gray (often dimmer than title).
+    const paleStat =
+      !warmArt && gray >= 78 && gray <= 210 && sat <= 48 && Math.abs(b - r) <= 28
+    const coolBright = !warmArt && gray >= 120 && b >= r - 18
+    const keep = lavender || paleStat || coolBright
+    if (keep) kept += 1
+    const v = keep ? 0 : 255
+    out[i] = out[i + 1] = out[i + 2] = v
+    out[i + 3] = 255
+  }
+
+  // Too sparse → any non-warm mid-bright pixel.
+  if (kept < total * 0.01) {
+    kept = 0
+    for (let i = 0; i + 3 < src.length; i += 4) {
+      const b = src[i]
+      const g = src[i + 1]
+      const r = src[i + 2]
+      const gray = (r * 299 + g * 587 + b * 114) / 1000
+      const warmArt = r > b + 24 && r >= g + 4 && Math.max(r, g, b) - Math.min(r, g, b) >= 28
+      const keep = !warmArt && gray >= 72
+      if (keep) kept += 1
+      const v = keep ? 0 : 255
+      out[i] = out[i + 1] = out[i + 2] = v
+      out[i + 3] = 255
+    }
+  }
+
+  return nativeImage.createFromBitmap(out, { width, height }).toPNG()
+}
+
+/**
  * WFInfo-style 3-vs-4 player detect on the reward name strip.
  * Uses a cosine weight across the filtered text band; odd peaks → 3 players.
  */

@@ -15,6 +15,7 @@ import { resolveOcrDisplay } from './display-target'
 import {
   ensurePersistentCapture,
   grabPersistentFrame,
+  grabPersistentRegions,
   isPersistentCaptureLive,
 } from './persistent-screen-capture'
 
@@ -165,7 +166,7 @@ async function captureDisplay(display: Electron.Display): Promise<{
 
 /**
  * Fast frame for readiness polling — no overlay pause.
- * Prefers live persistent stream; otherwise one desktopCapturer thumb.
+ * Prefers live persistent stream at ~30% scale (full-res encode was multi-second).
  */
 export async function captureDisplayQuick(): Promise<{
   png: Buffer
@@ -173,7 +174,11 @@ export async function captureDisplayQuick(): Promise<{
   height: number
 } | null> {
   if (isPersistentCaptureLive()) {
-    const persistent = await grabPersistentFrame()
+    const persistent = await grabPersistentFrame({
+      format: 'jpeg',
+      scale: 0.28,
+      quality: 0.55,
+    })
     if (persistent?.png?.length) return persistent
   }
   invalidateCaptureCache()
@@ -305,9 +310,41 @@ export async function captureRivenComparePngs(): Promise<Buffer[]> {
 export async function captureRivenCompare(): Promise<RivenCaptureResult | null> {
   return withOverlayPaused(async () => {
     invalidateCaptureCache()
+    const custom = activeOcrScanRegions()
+
+    // Hot path: crop cards in the capture page — never encode a 1440p/4K desktop PNG.
+    if (isPersistentCaptureLive()) {
+      const probe = await grabPersistentFrame({ format: 'jpeg', scale: 0.15, quality: 0.4 })
+      const sourceW = probe?.sourceWidth || 0
+      const sourceH = probe?.sourceHeight || 0
+      if (sourceW > 16 && sourceH > 16) {
+        const regions = resolveRivenCompareRegions(sourceW, sourceH, custom)
+        const grabbed = await grabPersistentRegions(regions)
+        if (grabbed?.crops?.length && grabbed.crops.length >= 2) {
+          const customLabel =
+            custom.rivenCurrent || custom.rivenReroll ? ' (custom regions)' : ''
+          console.info(
+            `[Everything Warframe] Riven card crops ${grabbed.width}×${grabbed.height}${customLabel} (region grab): ` +
+              grabbed.regions
+                .map(
+                  (r, i) =>
+                    `${i === 0 ? 'current' : 'reroll'}@(${r.x},${r.y},${r.width}x${r.height})`,
+                )
+                .join(' · '),
+          )
+          return {
+            crops: grabbed.crops,
+            fullPng: Buffer.alloc(0),
+            width: grabbed.width,
+            height: grabbed.height,
+            regions: grabbed.regions,
+          }
+        }
+      }
+    }
+
     const shot = await captureBestDisplay()
     if (!shot) return null
-    const custom = activeOcrScanRegions()
     const regions = resolveRivenCompareRegions(shot.width, shot.height, custom)
     const customLabel =
       custom.rivenCurrent || custom.rivenReroll ? ' (custom regions)' : ''

@@ -1,6 +1,6 @@
 {
   "name": "everything-warframe",
-  "version": "0.9.85",
+  "version": "0.9.86",
   "description": "Everything Warframe — overlay companion for Windows and Linux (Steam/Proton): worldstate, relics, rivens, foundry, inventory",
   "main": "dist-electron/main.cjs",
   "author": "Everything Warframe <hoeslovevid@users.noreply.github.com>",
@@ -17,7 +17,7 @@
     "dev:local": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-local.ps1",
     "build": "vite build && npm run build:electron",
     "build:riven-prefs": "node scripts/build-riven-preferences.mjs",
-    "build:electron": "esbuild electron/main.ts electron/preload.ts --bundle --platform=node --external:electron --external:tesseract.js --external:electron-updater --external:@repeato/ocr --external:sharp --external:onnxruntime-node --outdir=dist-electron --format=cjs --out-extension:.js=.cjs",
+    "build:electron": "esbuild electron/main.ts electron/preload.ts --bundle --platform=node --external:electron --external:tesseract.js --external:electron-updater --external:sharp --outdir=dist-electron --format=cjs --out-extension:.js=.cjs",
     "preview": "vite preview",
     "electron:dev": "concurrently -k \"vite\" \"wait-on http://127.0.0.1:5173 && npm run build:electron && electron .\"",
     "start": "npm run electron:dev",
@@ -30,7 +30,6 @@
     "release:linux": "npm run build && electron-builder --linux --publish always"
   },
   "dependencies": {
-    "@repeato/ocr": "^1.5.21",
     "electron-updater": "^6.6.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -90,8 +89,6 @@
     "asarUnpack": [
       "**/node_modules/tesseract.js/**/*",
       "**/node_modules/tesseract.js-core/**/*",
-      "**/node_modules/@repeato/ocr/**/*",
-      "**/node_modules/onnxruntime-node/**/*",
       "**/node_modules/sharp/**/*",
       "**/node_modules/@img/**/*"
     ],

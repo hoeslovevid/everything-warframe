@@ -664,6 +664,9 @@ function syncLogWatcherInterval() {
 
 function noteCaptureIdleAfterScan() {
   if (!loadSettings().gamePerformanceMode) return
+  // Relic/riven OCR needs a hot DXGI/PipeWire stream — don't cold-start mid-fissure.
+  const ocrOn = loadSettings().modules.relics || loadSettings().modules.rivens
+  if (ocrOn) return
   schedulePersistentCaptureIdleRelease(45_000)
 }
 
@@ -1409,6 +1412,19 @@ function registerIpc() {
       restoreOverlayGeometry(overlayWindow)
     }
     syncLogWatcherInterval()
+    if (enabled && (id === 'relics' || id === 'rivens')) {
+      void (async () => {
+        try {
+          if (id === 'relics') await warmupRelicScanner()
+          else await warmupRivenScanner()
+          if (process.platform !== 'linux' || loadSettings().onboarding.linuxCaptureAck) {
+            await warmScreenCapture().catch(() => {})
+          }
+        } catch {
+          // quiet
+        }
+      })()
+    }
     if (
       enabled &&
       process.platform === 'linux' &&
@@ -1983,10 +1999,10 @@ app.whenReady().then(async () => {
     void warmCompanionCatalogs()
   }, 1200)
 
-  // OCR / capture warmup is deferred until the first relic or riven scan
-  // (gamePerformanceMode) so we don't hold a desktop-duplication stream or
-  // Paddle workers while you're just playing. Catalogs still warm separately.
-  if (!loadSettings().gamePerformanceMode && (loadSettings().modules.relics || loadSettings().modules.rivens)) {
+  // Keep Tesseract + capture hot whenever Relics/Rivens are enabled — cold first
+  // scans defeat the overlay. Game performance mode still lowers process priority
+  // and pauses inventory sync during OCR; it no longer delays OCR warmup.
+  if (loadSettings().modules.relics || loadSettings().modules.rivens) {
     setTimeout(() => {
       void (async () => {
         const settings = loadSettings()
@@ -2008,16 +2024,10 @@ app.whenReady().then(async () => {
         }
       })()
     }, 500)
-  } else if (loadSettings().modules.relics || loadSettings().modules.rivens) {
-    console.info(
-      '[Everything Warframe] Game performance mode: OCR/capture warm on first scan (not at launch)',
-    )
   }
 
-  // Linux/Wayland: only warm the PipeWire share after the user has authorized
-  // (or skipped) via the capture wizard — and only when not in game perf mode.
+  // Linux/Wayland: warm PipeWire after authorize/ack so the first EE.log scan is hot.
   if (
-    !loadSettings().gamePerformanceMode &&
     process.platform === 'linux' &&
     loadSettings().onboarding.linuxCaptureAck &&
     (loadSettings().modules.relics || loadSettings().modules.rivens)

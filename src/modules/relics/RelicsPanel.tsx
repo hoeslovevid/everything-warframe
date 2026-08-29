@@ -246,7 +246,11 @@ export function RelicsPanel({
     const showRecovery = !previewMode && !scanning && (weakScan || Boolean(state.error))
     return (
       <div className="relic-strip" style={{ opacity, width: stripW }} data-relic-strip>
-        {scanning ? <p className="relic-strip__status">Scanning…</p> : null}
+        {scanning ? (
+          <p className="relic-strip__status">
+            {rewards.length ? 'Updating rewards…' : 'Scanning…'}
+          </p>
+        ) : null}
         {!previewMode && state.error ? (
           <ErrorFixBar
             message={state.error}

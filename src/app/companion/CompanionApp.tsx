@@ -2057,7 +2057,7 @@ export function CompanionApp() {
                     />
                     <ToggleRow
                       label="Dual OCR workers"
-                      description="On by default — faster multi-slot relic/riven reads (restart app after changing). Turn off on low-end CPUs."
+                      description="On by default — two Tesseract workers for parallel relic slots / riven lines (restart app after changing). Turn off on low-end CPUs."
                       checked={settings.ocrPoolSize === 2}
                       onChange={(enabled) =>
                         void updateSettings({ ocrPoolSize: enabled ? 2 : 1 })

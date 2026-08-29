@@ -193,7 +193,11 @@ export function RivenPanel({
 
   const body = (
     <div className="mod-stack">
-      {scanning ? <p className="riven-strip-status">Reading riven cards…</p> : null}
+      {scanning ? (
+        <p className="riven-strip-status">
+          {current || reroll ? 'Refining grades…' : 'Reading riven cards…'}
+        </p>
+      ) : null}
       {!previewMode && state.error ? <p className="mod-empty">Error: {state.error}</p> : null}
 
       {current || reroll ? (

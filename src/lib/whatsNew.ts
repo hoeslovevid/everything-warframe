@@ -400,6 +400,11 @@ export const WHATS_NEW: Record<string, string[]> = {
     'Click-to-copy + toasts; nav Favorites; richer Ctrl+K; persist Market/Inventory filters',
     'UI language EN/ES/FR; Crash → GitHub docs; Linux parity matrix',
   ],
+  '0.9.86': [
+    'OCR: WFInfo-style Tesseract (replaces Paddle) — theme-filtered crops, dual workers',
+    'Rivens: panel-first fast path; Multishot/faction/truncated-stat scrubbing',
+    'Keep capture + OCR warm while Relics/Rivens are on; region grabs stay hot',
+  ],
 }
 
 export function getWhatsNewBullets(version: string): string[] {

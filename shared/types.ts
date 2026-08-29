@@ -547,7 +547,7 @@ export type AppSettings = {
    * by default, skip inventory auto-sync while OCR is running.
    */
   gamePerformanceMode: boolean
-  /** PaddleOCR worker count. 1 = less contention; 2 = faster multi-slot relic OCR. */
+  /** Tesseract worker count. 1 = less contention; 2 = faster multi-slot relic/riven OCR. */
   ocrPoolSize: 1 | 2
   /**
    * Shrink the overlay BrowserWindow to the union of visible panels (less fullscreen

@@ -74,13 +74,19 @@ function scoreOcrCandidate(cleaned: string): number {
 }
 
 /** Pick the OCR string that best matches the item catalog (or longest fallback). */
-async function bestOcrForSlot(bandCrops: Buffer[], theme: WfThemeId | null): Promise<string> {
+async function bestOcrForSlot(
+  bandCrops: Buffer[],
+  theme: WfThemeId | null,
+  opts?: { primaryOnly?: boolean },
+): Promise<string> {
   if (!bandCrops.length) return ''
   // Variants are [above, primary, below] — try primary first, then neighbors only if weak.
   const order =
-    bandCrops.length >= 3
-      ? [1, 0, 2, ...Array.from({ length: bandCrops.length - 3 }, (_, i) => i + 3)]
-      : bandCrops.map((_, i) => i)
+    opts?.primaryOnly && bandCrops.length >= 3
+      ? [1]
+      : bandCrops.length >= 3
+        ? [1, 0, 2, ...Array.from({ length: bandCrops.length - 3 }, (_, i) => i + 3)]
+        : bandCrops.map((_, i) => i)
 
   let best = ''
   let bestScore = -1
@@ -103,6 +109,80 @@ async function bestOcrForSlot(bandCrops: Buffer[], theme: WfThemeId | null): Pro
     if (tried >= 2 && best.length >= 6) break
   }
   return best
+}
+
+function rewardFromOcr(cleaned: string, slot: number): RewardEval {
+  let matched = matchCatalogItem(cleaned)
+  // Stacked "2 X Forma" / OCR dropping "Blueprint" → stable Forma Blueprint hit.
+  if ((!matched || matched.score < 0.5) && /\bforma\b/i.test(cleaned)) {
+    const formaHit = matchCatalogItem('Forma Blueprint')
+    if (formaHit) matched = { ...formaHit, score: Math.max(formaHit.score, 0.85) }
+  }
+  const name = matched?.item.name || cleaned || `Reward ${slot + 1}`
+  const uniqueName = matched?.item.uniqueName || null
+  const setName = matched?.item.setName || null
+  const partName = matched?.item.partName || null
+  const owned = ownedCount(uniqueName, name)
+  const { setParts, setOwnedParts, setTotalParts } = buildSetParts(setName)
+  const matchScore = matched?.score ?? (cleaned.length > 2 ? 0.2 : 0)
+  const forma = /^forma(\s+blueprint)?$/i.test(name) || /^forma(\s+blueprint)?$/i.test(cleaned)
+
+  return {
+    slot,
+    ocrText: cleaned,
+    name: forma ? 'Forma Blueprint' : name,
+    uniqueName,
+    setName: forma ? null : setName,
+    partName: forma ? null : partName,
+    owned,
+    needed: !forma && owned <= 0 && Boolean(setName),
+    setOwnedParts,
+    setTotalParts,
+    setParts,
+    matchScore: forma ? Math.max(matchScore, 0.9) : matchScore,
+    ducats: matched?.item.ducats ?? null,
+    platinum: null,
+    volume: null,
+    bestPick: false,
+    vaulted: forma ? null : matched?.item.vaulted ?? null,
+  }
+}
+
+function filterUsefulRewards(next: RewardEval[]): RewardEval[] {
+  return next.filter(
+    (r) =>
+      r.matchScore >= 0.42 ||
+      /^forma(\s+blueprint)?$/i.test(r.ocrText.trim()) ||
+      /^forma(\s+blueprint)?$/i.test(r.name.trim()) ||
+      (r.ocrText.trim().length >= 10 &&
+        /prime|blueprint|systems|chassis|neuro|barrel|receiver|blade|stock|grip|hilt|link|string/i.test(
+          r.ocrText,
+        )),
+  )
+}
+
+function emitPartialRewards(rewards: RewardEval[], squadSize: number | null) {
+  if (!rewards.length || !state.scanning) return
+  let priced = rewards
+  try {
+    const local = lookupWfinfoPrices(rewards.map((r) => r.name))
+    priced = rewards.map((r) => {
+      const hit = local.get(r.name)
+      return hit ? { ...r, platinum: hit.platinum, volume: hit.volume } : r
+    })
+  } catch {
+    // pricing optional
+  }
+  state = {
+    ...state,
+    scanning: true,
+    active: true,
+    error: null,
+    rewards: pickBest(priced),
+    inventoryLoaded: Object.keys(getInventoryIndex()).length > 0,
+    squadSize,
+  }
+  emit()
 }
 
 type Listener = (state: RelicScanState) => void
@@ -342,6 +422,7 @@ export async function scanRelicRewards(
     trigger,
     error: null,
     celebration: false,
+    rewards: [],
     inventoryLoaded: Object.keys(getInventoryIndex()).length > 0,
     squadSize,
   }
@@ -442,67 +523,64 @@ export async function scanRelicRewards(
             )
           : capture.bands
 
-      // OCR all slots in parallel (primary band first per slot).
-      const ocrNames = await Promise.all(
+      // Fast path: primary name band only (parallel). Neighbor bands only for weak slots.
+      const primaryNames = await Promise.all(
         bands.map((slotBands, slot) =>
-          bestOcrForSlot(slotBands, theme).then((best) => {
+          bestOcrForSlot(slotBands, theme, { primaryOnly: true }).then((best) => {
             console.info(
-              `[Everything Warframe] Relic OCR slot ${slot}: ${best || '(empty)'}`,
+              `[Everything Warframe] Relic OCR slot ${slot} (primary): ${best || '(empty)'}`,
             )
             return best
           }),
         ),
       )
 
-      let next: RewardEval[] = ocrNames.map((cleaned, slot) => {
-        let matched = matchCatalogItem(cleaned)
-        // Stacked "2 X Forma" / OCR dropping "Blueprint" → stable Forma Blueprint hit.
-        if ((!matched || matched.score < 0.5) && /\bforma\b/i.test(cleaned)) {
-          const formaHit = matchCatalogItem('Forma Blueprint')
-          if (formaHit) matched = { ...formaHit, score: Math.max(formaHit.score, 0.85) }
-        }
-        const name = matched?.item.name || cleaned || `Reward ${slot + 1}`
-        const uniqueName = matched?.item.uniqueName || null
-        const setName = matched?.item.setName || null
-        const partName = matched?.item.partName || null
-        const owned = ownedCount(uniqueName, name)
-        const { setParts, setOwnedParts, setTotalParts } = buildSetParts(setName)
-        const matchScore = matched?.score ?? (cleaned.length > 2 ? 0.2 : 0)
-        const forma = /^forma(\s+blueprint)?$/i.test(name) || /^forma(\s+blueprint)?$/i.test(cleaned)
+      let slotTexts = [...primaryNames]
 
-        return {
-          slot,
-          ocrText: cleaned,
-          name: forma ? 'Forma Blueprint' : name,
-          uniqueName,
-          setName: forma ? null : setName,
-          partName: forma ? null : partName,
-          owned,
-          needed: !forma && owned <= 0 && Boolean(setName),
-          setOwnedParts,
-          setTotalParts,
-          setParts,
-          matchScore: forma ? Math.max(matchScore, 0.9) : matchScore,
-          ducats: matched?.item.ducats ?? null,
-          platinum: null,
-          volume: null,
-          bestPick: false,
-          vaulted: forma ? null : matched?.item.vaulted ?? null,
-        }
-      })
+      // Progressive: show primary-band hits immediately (before neighbor retries).
+      const progressiveEarly: RewardEval[] = []
+      for (let slot = 0; slot < slotTexts.length; slot++) {
+        const cleaned = cleanRelicOcr(slotTexts[slot] || '')
+        if (!cleaned) continue
+        progressiveEarly.push(rewardFromOcr(cleaned, slot))
+      }
+      const earlyUseful = filterUsefulRewards(progressiveEarly)
+      if (earlyUseful.length) {
+        emitPartialRewards(earlyUseful, squadSize)
+      }
 
-      // Drop garbage OCR (e.g. "HHI", "dit") — require a real catalog hit or a
-      // long prime-part-shaped string. Short unmatched blobs used to pollute the strip.
-      next = next.filter(
-        (r) =>
-          r.matchScore >= 0.42 ||
-          /^forma(\s+blueprint)?$/i.test(r.ocrText.trim()) ||
-          /^forma(\s+blueprint)?$/i.test(r.name.trim()) ||
-          (r.ocrText.trim().length >= 10 &&
-            /prime|blueprint|systems|chassis|neuro|barrel|receiver|blade|stock|grip|hilt|link|string/i.test(
-              r.ocrText,
-            )),
-      )
+      const weakSlots = slotTexts
+        .map((t, i) => ({ t, i }))
+        .filter(({ t }) => scoreOcrCandidate(cleanRelicOcr(t || '')) < 0.45)
+        .map(({ i }) => i)
+
+      if (weakSlots.length) {
+        await Promise.all(
+          weakSlots.map(async (slot) => {
+            const best = await bestOcrForSlot(bands[slot], theme, { primaryOnly: false })
+            console.info(
+              `[Everything Warframe] Relic OCR slot ${slot} (neighbors): ${best || '(empty)'}`,
+            )
+            if (scoreOcrCandidate(best) >= scoreOcrCandidate(slotTexts[slot] || '')) {
+              slotTexts[slot] = best
+            }
+          }),
+        )
+      }
+
+      const progressive: RewardEval[] = []
+      for (let slot = 0; slot < slotTexts.length; slot++) {
+        const cleaned = cleanRelicOcr(slotTexts[slot] || '')
+        if (!cleaned) continue
+        progressive.push(rewardFromOcr(cleaned, slot))
+      }
+      const partialUseful = filterUsefulRewards(progressive)
+      if (partialUseful.length && partialUseful.length !== earlyUseful.length) {
+        emitPartialRewards(partialUseful, squadSize)
+      }
+
+      let next: RewardEval[] = progressive.map((r) => ({ ...r }))
+      next = filterUsefulRewards(next)
 
       if (saveDebugOnWeak && next.every((r) => r.matchScore < 0.45)) {
         saveRelicDebugCrops(bands, 'weak', capture.fullPng)

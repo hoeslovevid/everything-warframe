@@ -16,6 +16,8 @@ const GAME_BINARY_RE = /(?:^|[\\/\s"'])warframe\.x64\.exe(?:\s|$|"')|(?:^|[\\/\s
 let lastCheck = 0
 let lastRunning = false
 let lastForeground = false
+/** Last time we positively observed Warframe running (debounce OCR CPU flakes). */
+let lastRunningTrueAt = 0
 
 export function cmdlineLooksLikeWarframeGame(cmdline: string): boolean {
   const text = cmdline.replace(/\0/g, ' ')
@@ -79,7 +81,9 @@ Write-Output ("{0}|{1}" -f $running, $fg)
         .some((line) => line.includes('warframe.x64.exe') || line.includes('"warframe.exe"'))
       return { running, foreground: running }
     } catch {
-      return { running: false, foreground: false }
+      // Keep last known state — OCR CPU load often times out PowerShell and
+      // falsely reports Warframe as closed mid-scan.
+      return { running: lastRunning, foreground: lastForeground }
     }
   }
 }
@@ -176,9 +180,16 @@ export async function getWarframeProcessState(): Promise<{
     return { running: lastRunning, foreground: lastForeground }
   }
   const next = await queryPlatform()
+  // OCR spikes make PowerShell falsely report Warframe closed — hold "running"
+  // for a few seconds after a positive sighting.
+  if (!next.running && lastRunning && now - lastRunningTrueAt < 10_000) {
+    lastCheck = now
+    return { running: true, foreground: lastForeground || next.foreground }
+  }
   lastCheck = now
   lastRunning = next.running
   lastForeground = next.foreground
+  if (next.running) lastRunningTrueAt = now
   return next
 }
 

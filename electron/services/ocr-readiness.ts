@@ -114,6 +114,8 @@ function scoreRivenFrame(png: Buffer, width: number, height: number): number {
 }
 
 const READY_THRESHOLD = 0.42
+/** Riven Cycle cards score a bit lower than relic name bands — don't miss by 0.01. */
+const RIVEN_READY_THRESHOLD = 0.38
 /** One confident frame is enough — retry path covers false starts. */
 const STABLE_HITS = 1
 
@@ -143,27 +145,54 @@ export async function waitForOcrUiReady(
   opts: WaitOpts = {},
 ): Promise<{ waitedMs: number; ready: boolean; score: number }> {
   const linux = process.platform === 'linux'
+  // Riven: longer budget — Cycle cards paint slowly and one capture can take >1s when cold.
   const defaults =
     kind === 'relic'
       ? {
-          minMs: linux ? 120 : 50,
-          maxMs: linux ? 800 : 400,
-          intervalMs: 60,
+          minMs: 0,
+          maxMs: linux ? 450 : 220,
+          intervalMs: 40,
         }
       : {
-          minMs: linux ? 200 : 120,
-          maxMs: linux ? 1800 : 1000,
-          intervalMs: 80,
+          minMs: linux ? 40 : 0,
+          maxMs: linux ? 900 : 450,
+          intervalMs: 50,
         }
   const minMs = opts.minMs ?? defaults.minMs
   const maxMs = opts.maxMs ?? defaults.maxMs
   const intervalMs = opts.intervalMs ?? defaults.intervalMs
+  const threshold = kind === 'riven' ? RIVEN_READY_THRESHOLD : READY_THRESHOLD
 
   const started = Date.now()
-  if (minMs > 0) await sleep(minMs)
 
+  // First sample immediately — skip floor wait when UI is already painted.
   let hits = 0
   let lastScore = 0
+  try {
+    const shot = await captureDisplayQuick()
+    if (shot?.png?.length) {
+      lastScore =
+        kind === 'relic'
+          ? scoreRelicFrame(shot.png, shot.width, shot.height)
+          : scoreRivenFrame(shot.png, shot.width, shot.height)
+      if (lastScore >= threshold) {
+        const waitedMs = Date.now() - started
+        console.info(
+          `[Everything Warframe] OCR readiness ${kind}: ready score=${lastScore.toFixed(2)} after ${waitedMs}ms` +
+            (waitedMs < 80 ? ' (instant)' : ''),
+        )
+        return { waitedMs, ready: true, score: lastScore }
+      }
+    }
+  } catch {
+    // fall through to poll loop
+  }
+
+  if (minMs > 0) {
+    const remainingMin = minMs - (Date.now() - started)
+    if (remainingMin > 0) await sleep(remainingMin)
+  }
+
   while (Date.now() - started < maxMs) {
     try {
       const shot = await captureDisplayQuick()
@@ -172,7 +201,7 @@ export async function waitForOcrUiReady(
           kind === 'relic'
             ? scoreRelicFrame(shot.png, shot.width, shot.height)
             : scoreRivenFrame(shot.png, shot.width, shot.height)
-        if (lastScore >= READY_THRESHOLD) {
+        if (lastScore >= threshold) {
           hits += 1
           if (hits >= STABLE_HITS) {
             const waitedMs = Date.now() - started
@@ -194,8 +223,9 @@ export async function waitForOcrUiReady(
   }
 
   const waitedMs = Date.now() - started
+  const ready = lastScore >= threshold
   console.info(
-    `[Everything Warframe] OCR readiness ${kind}: proceed score=${lastScore.toFixed(2)} after ${waitedMs}ms (cap)`,
+    `[Everything Warframe] OCR readiness ${kind}: ${ready ? 'ready' : 'proceed'} score=${lastScore.toFixed(2)} after ${waitedMs}ms${ready ? '' : ' (cap)'}`,
   )
-  return { waitedMs, ready: lastScore >= READY_THRESHOLD, score: lastScore }
+  return { waitedMs, ready, score: lastScore }
 }

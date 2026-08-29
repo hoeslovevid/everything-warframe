@@ -258,10 +258,58 @@ export async function captureRewardRegionVariants(opts?: {
 } | null> {
   return withOverlayPaused(async () => {
     invalidateCaptureCache()
-    const shot = await captureBestDisplay()
-    if (!shot) return null
     const custom = opts?.ignoreCustomStrip ? null : activeOcrScanRegions().relicStrip
     const slots = opts?.slots === 3 ? 3 : 4
+
+    // Hot path: region-grab name bands (like rivens) — skip full-desktop PNG encode.
+    if (isPersistentCaptureLive()) {
+      const probe = await grabPersistentFrame({
+        format: 'jpeg',
+        scale: 0.4,
+        quality: 0.65,
+      })
+      const sourceW = probe?.sourceWidth || 0
+      const sourceH = probe?.sourceHeight || 0
+      if (sourceW > 16 && sourceH > 16) {
+        const variants = resolveRelicRewardRegionVariants(
+          sourceW,
+          sourceH,
+          slots,
+          custom,
+        )
+        const flat = variants.flat()
+        const grabbed = await grabPersistentRegions(flat)
+        if (grabbed?.crops?.length === flat.length) {
+          const bands: Buffer[][] = []
+          let i = 0
+          for (const slotBands of variants) {
+            bands.push(grabbed.crops.slice(i, i + slotBands.length))
+            i += slotBands.length
+          }
+          console.info(
+            `[Everything Warframe] Relic variant crops ${sourceW}×${sourceH}` +
+              (custom ? ' (custom strip)' : ' (built-in)') +
+              ` slots=${slots} (region grab): ` +
+              variants
+                .map(
+                  (b, si) =>
+                    `slot${si}=[${b.map((r) => `${r.y}:${r.height}`).join(',')}]`,
+                )
+                .join(' · '),
+          )
+          return {
+            bands,
+            // Scaled JPEG is enough for theme / player-count heuristics.
+            fullPng: probe?.png || Buffer.alloc(0),
+            width: sourceW,
+            height: sourceH,
+          }
+        }
+      }
+    }
+
+    const shot = await captureBestDisplay()
+    if (!shot) return null
     const variants = resolveRelicRewardRegionVariants(
       shot.width,
       shot.height,

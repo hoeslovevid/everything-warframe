@@ -405,6 +405,11 @@ export const WHATS_NEW: Record<string, string[]> = {
     'Rivens: panel-first fast path; Multishot/faction/truncated-stat scrubbing',
     'Keep capture + OCR warm while Relics/Rivens are on; region grabs stay hot',
   ],
+  '0.9.87': [
+    'Relics: region-grab name bands + unfiltered Tess salvage (same pattern as rivens)',
+    'Relic OCR scrub for truncated Blueprint/Neuroptics/Chassis names',
+    'Faster fissure picks: skip readiness wait when capture stream is already live',
+  ],
 }
 
 export function getWhatsNewBullets(version: string): string[] {

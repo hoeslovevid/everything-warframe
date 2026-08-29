@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { app } from 'electron'
+import { app, nativeImage } from 'electron'
 import { RelicScanState, RewardEval, SetPartOwned } from '../../shared/types'
 import { getInventoryIndex, ownedCountForReward } from './inventory'
 import { ensureItemCatalog, getSetParts, matchCatalogItem } from './item-catalog'
@@ -8,11 +8,24 @@ import { lookupMarketPrices } from './market-prices'
 import { recognizeRewardNames, warmupOcr } from './ocr'
 import { sampleOcrUiScore, waitForOcrUiReady } from './ocr-readiness'
 import { captureRewardRegionVariants, cropRelicBandsFromPng } from './screen-capture'
+import { isPersistentCaptureLive } from './persistent-screen-capture'
 import { detectRewardPlayerCount, detectUiTheme, rankUiThemes, type WfThemeId } from './wfinfo-theme'
 import { ensureWfinfoPrices, lookupWfinfoPrices } from './wfinfo-prices'
 import { loadSettings } from '../settings'
 import { recordRelicHaul } from './session-haul'
 import { WF_THEME_IDS } from './wfinfo-theme'
+
+/** True when buffer is roughly full-resolution (not a scaled JPEG theme probe). */
+function nativeImageSafeSize(png: Buffer): { width: number; height: number } | null {
+  try {
+    if (!png?.length) return null
+    const { width, height } = nativeImage.createFromBuffer(png).getSize()
+    if (width < 8 || height < 8) return null
+    return { width, height }
+  } catch {
+    return null
+  }
+}
 
 /** Last confident theme/slots — skip re-detect on the next scan when overrides are Auto. */
 let lastConfidentTheme: WfThemeId | null = null
@@ -25,6 +38,14 @@ function cleanRelicOcr(ocrText: string): string {
     // "2 X Forma Blueprint" / "2x Forma" quantity prefixes from stacked rewards
     .replace(/^\s*\d+\s*[x×X]\s*/g, '')
     .replace(/\b(\d+)\s*[x×X]\s+(?=[A-Za-z])/g, '')
+    // Tess truncations / common Warframe OCR slips
+    .replace(/\bBlueprin\b/gi, 'Blueprint')
+    .replace(/\bNeuroptic\b/gi, 'Neuroptics')
+    .replace(/\bChassi\b/gi, 'Chassis')
+    .replace(/\bSystem(?!s)\b/gi, 'Systems')
+    .replace(/\bReceiv(?:er|e)?\b/gi, 'Receiver')
+    .replace(/\bBarre[li]\b/gi, 'Barrel')
+    .replace(/\bPrim\b/gi, 'Prime')
     .replace(/\bForma\b(?!\s+Blueprint)/gi, 'Forma Blueprint')
     .replace(/\bBlueprint\b/gi, 'Blueprint')
     .replace(/[^A-Za-z0-9 '&-]+/g, ' ')
@@ -77,16 +98,18 @@ function scoreOcrCandidate(cleaned: string): number {
 async function bestOcrForSlot(
   bandCrops: Buffer[],
   theme: WfThemeId | null,
-  opts?: { primaryOnly?: boolean },
+  opts?: { primaryOnly?: boolean; neighborsOnly?: boolean },
 ): Promise<string> {
   if (!bandCrops.length) return ''
-  // Variants are [above, primary, below] — try primary first, then neighbors only if weak.
+  // Variants are [above, primary, below] — primary first; neighbors only when weak.
   const order =
     opts?.primaryOnly && bandCrops.length >= 3
       ? [1]
-      : bandCrops.length >= 3
-        ? [1, 0, 2, ...Array.from({ length: bandCrops.length - 3 }, (_, i) => i + 3)]
-        : bandCrops.map((_, i) => i)
+      : opts?.neighborsOnly && bandCrops.length >= 3
+        ? [0, 2, ...Array.from({ length: bandCrops.length - 3 }, (_, i) => i + 3)]
+        : bandCrops.length >= 3
+          ? [1, 0, 2, ...Array.from({ length: bandCrops.length - 3 }, (_, i) => i + 3)]
+          : bandCrops.map((_, i) => i)
 
   let best = ''
   let bestScore = -1
@@ -441,8 +464,10 @@ export async function scanRelicRewards(
       ensureWfinfoPrices().catch(() => {}),
     ])
     if (trigger === 'log') {
-      // Poll until the reward strip looks painted (cap = old fixed delay).
-      await waitForOcrUiReady('relic')
+      // Live stream: skip readiness poll (region grabs are cheap; UI usually painted).
+      if (!isPersistentCaptureLive()) {
+        await waitForOcrUiReady('relic')
+      }
     }
 
     const buildRewards = async (
@@ -452,6 +477,9 @@ export async function scanRelicRewards(
     ): Promise<RewardEval[]> => {
       const settings = loadSettings()
       const ignoreCustom = Boolean(opts?.ignoreCustomStrip)
+      const slotGuess =
+        settings.relicSquadSizeOverride ?? squadSize ?? lastConfidentSlots ?? 4
+      const initialSlots: 3 | 4 = slotGuess === 3 ? 3 : 4
 
       let capture: {
         bands: Buffer[][]
@@ -461,27 +489,30 @@ export async function scanRelicRewards(
       } | null = null
 
       if (ignoreCustom && lastFullPng && lastCaptureSize) {
-        const slotGuess =
-          settings.relicSquadSizeOverride ?? squadSize ?? lastConfidentSlots ?? 4
-        const slots: 3 | 4 = slotGuess === 3 ? 3 : 4
-        capture = {
-          bands: cropRelicBandsFromPng(
-            lastFullPng,
-            lastCaptureSize.width,
-            lastCaptureSize.height,
-            slots,
-            null,
-          ),
-          fullPng: lastFullPng,
-          width: lastCaptureSize.width,
-          height: lastCaptureSize.height,
+        const slots: 3 | 4 = initialSlots
+        const img = nativeImageSafeSize(lastFullPng)
+        if (img && img.width >= lastCaptureSize.width * 0.85) {
+          capture = {
+            bands: cropRelicBandsFromPng(
+              lastFullPng,
+              lastCaptureSize.width,
+              lastCaptureSize.height,
+              slots,
+              null,
+            ),
+            fullPng: lastFullPng,
+            width: lastCaptureSize.width,
+            height: lastCaptureSize.height,
+          }
+          console.info(
+            `[Everything Warframe] Relic OCR fallback → built-in geometry, slots=${slots}`,
+          )
         }
-        console.info(
-          `[Everything Warframe] Relic OCR fallback → built-in geometry, slots=${slots}`,
-        )
-      } else {
+      }
+      if (!capture) {
         capture = await captureRewardRegionVariants({
           ignoreCustomStrip: ignoreCustom,
+          slots: initialSlots,
         })
       }
 
@@ -498,30 +529,41 @@ export async function scanRelicRewards(
         themeForce ??
         settings.wfThemeOverride ??
         lastConfidentTheme ??
-        detectUiTheme(capture.fullPng)
+        (capture.fullPng?.length ? detectUiTheme(capture.fullPng) : 'Lotus')
       console.info(`[Everything Warframe] Relic UI theme ≈ ${theme}`)
 
       // Squad size: settings override → EE.log → last confident → image detect.
-      // Prefer EE.log / override so 3-player crops don't get stretched to 4.
       let slotHint =
         settings.relicSquadSizeOverride ??
         squadSize ??
         lastConfidentSlots ??
-        detectRewardPlayerCount(capture.fullPng, theme)
+        (capture.fullPng?.length ? detectRewardPlayerCount(capture.fullPng, theme) : 4)
       if (slotHint !== 3 && slotHint !== 4) slotHint = 4
       console.info(`[Everything Warframe] Relic slot count hint ≈ ${slotHint}`)
 
-      // Re-crop for 3-player reward layouts (same strip width, 3 cards).
-      const bands =
-        slotHint === 3
-          ? cropRelicBandsFromPng(
-              capture.fullPng,
-              capture.width,
-              capture.height,
-              3,
-              ignoreCustom ? null : undefined,
-            )
-          : capture.bands
+      // Re-grab at 3 slots when the first capture assumed 4 (region-grab can't re-crop a JPEG).
+      let bands = capture.bands
+      if (slotHint === 3 && capture.bands.length !== 3) {
+        const img = nativeImageSafeSize(capture.fullPng)
+        if (img && img.width >= capture.width * 0.85) {
+          bands = cropRelicBandsFromPng(
+            capture.fullPng,
+            capture.width,
+            capture.height,
+            3,
+            ignoreCustom ? null : undefined,
+          )
+        } else {
+          const again = await captureRewardRegionVariants({
+            ignoreCustomStrip: ignoreCustom,
+            slots: 3,
+          })
+          if (again?.bands?.length) {
+            capture = again
+            bands = again.bands
+          }
+        }
+      }
 
       // Fast path: primary name band only (parallel). Neighbor bands only for weak slots.
       const primaryNames = await Promise.all(
@@ -557,7 +599,10 @@ export async function scanRelicRewards(
       if (weakSlots.length) {
         await Promise.all(
           weakSlots.map(async (slot) => {
-            const best = await bestOcrForSlot(bands[slot], theme, { primaryOnly: false })
+            // Neighbors only — don't re-OCR the primary band we already have.
+            const best = await bestOcrForSlot(bands[slot], theme, {
+              neighborsOnly: true,
+            })
             console.info(
               `[Everything Warframe] Relic OCR slot ${slot} (neighbors): ${best || '(empty)'}`,
             )

@@ -225,11 +225,18 @@ async function prepareRelicPng(
   png: Buffer,
   scale: number,
   theme?: WfThemeId | null,
+  useFilter = true,
 ): Promise<Buffer> {
-  const filtered = theme ? filterRelicTextPng(png, theme) : png
+  const filtered = useFilter && theme ? filterRelicTextPng(png, theme) : png
   try {
     const decoded = electronPngToRgba(filtered)
-    let pipeline = sharpFromPng(filtered).grayscale().normalize().sharpen({ sigma: 0.6 })
+    let pipeline = sharpFromPng(filtered).grayscale().normalize()
+    if (!useFilter || !theme) {
+      // Light UI text on dark mesh without theme mask → invert for Tess.
+      pipeline = pipeline.negate().linear(1.3, -12)
+    } else {
+      pipeline = pipeline.sharpen({ sigma: 0.6 })
+    }
     if (decoded && scale !== 1) {
       pipeline = pipeline.resize({
         width: Math.round(decoded.width * scale),
@@ -252,7 +259,13 @@ async function prepareRelicPng(
       .png()
       .toBuffer()
   } catch {
-    return nativeContrastPrep(filtered, { scale: Math.max(1, scale), harsh: true })
+    const prep = nativeContrastPrep(filtered, { scale: Math.max(1, scale), harsh: true })
+    if (useFilter && theme) return prep
+    try {
+      return await sharpFromPng(prep).negate().png().toBuffer()
+    } catch {
+      return prep
+    }
   }
 }
 
@@ -432,10 +445,18 @@ async function ocrSingleLine(
   png: Buffer,
   mode: 'relic' | 'riven',
   theme?: WfThemeId | null,
-  opts?: { rivenFilter?: boolean },
+  opts?: { rivenFilter?: boolean; relicFilter?: boolean },
 ): Promise<string> {
   if (mode === 'relic') {
-    const prepared = await prepareRelicPng(png, 2.0, theme)
+    try {
+      const img = nativeImage.createFromBuffer(png)
+      const { width, height } = img.getSize()
+      if (width < 24 || height < 8) return ''
+    } catch {
+      return ''
+    }
+    const useFilter = opts?.relicFilter !== false
+    const prepared = await prepareRelicPng(png, 2.0, theme, useFilter)
     return withTessSlot(async (w) => {
       await w.setParameters({
         tessedit_char_whitelist: RELIC_WHITELIST,
@@ -526,8 +547,8 @@ async function ocrRivenCardLines(png: Buffer, dy = 0): Promise<string[]> {
 }
 
 /**
- * OCR reward name crops. Pass `theme` (from full-frame detectUiTheme) so
- * prep can isolate UI text like WFInfo / wfinfo-ng.
+ * OCR reward name crops (WFInfo-style). Theme-filtered first; unfiltered salvage
+ * when the mask blanks the line — same progressive pattern as riven panel OCR.
  */
 export async function recognizeRewardNames(
   images: Buffer[],
@@ -538,7 +559,13 @@ export async function recognizeRewardNames(
     return Promise.all(
       images.map(async (png) => {
         try {
-          return await ocrSingleLine(png, 'relic', theme)
+          let text = await ocrSingleLine(png, 'relic', theme, { relicFilter: true })
+          // Theme mis-detect / dim glyphs — one unfiltered pass like riven salvage.
+          if (!text || text.replace(/\s/g, '').length < 4) {
+            const alt = await ocrSingleLine(png, 'relic', theme, { relicFilter: false })
+            if ((alt || '').length > (text || '').length) text = alt
+          }
+          return text
         } catch (err) {
           console.warn(
             '[Everything Warframe] Relic OCR failed',

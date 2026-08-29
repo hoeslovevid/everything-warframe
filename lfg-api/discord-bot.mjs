@@ -64,10 +64,10 @@ function envFallbackChannelId() {
 }
 
 /**
- * @returns {Array<{ guildId: string | null, channelId: string, webhookUrl?: string | null }>}
+ * @returns {Array<{ guildId: string | null, channelId: string, webhookUrl?: string | null, membersOnly?: boolean }>}
  */
 function resolveAnnounceTargets() {
-  /** @type {Map<string, { guildId: string | null, channelId: string, webhookUrl?: string | null }>} */
+  /** @type {Map<string, { guildId: string | null, channelId: string, webhookUrl?: string | null, membersOnly?: boolean }>} */
   const byChannel = new Map()
   const store = getStore?.()
   const guilds = store?.listDiscordGuilds?.() || []
@@ -77,13 +77,84 @@ function resolveAnnounceTargets() {
       guildId: g.guildId,
       channelId: g.channelId,
       webhookUrl: g.webhookUrl || null,
+      membersOnly: Boolean(g.membersOnly),
     })
   }
   const envCh = envFallbackChannelId()
   if (envCh && !byChannel.has(envCh)) {
-    byChannel.set(envCh, { guildId: null, channelId: envCh, webhookUrl: null })
+    byChannel.set(envCh, {
+      guildId: null,
+      channelId: envCh,
+      webhookUrl: null,
+      membersOnly: false,
+    })
   }
   return [...byChannel.values()]
+}
+
+/**
+ * Discord user ids that may represent this listing's host.
+ * @param {object} listing
+ * @returns {string[]}
+ */
+function hostDiscordUserIds(listing) {
+  /** @type {Set<string>} */
+  const ids = new Set()
+  const store = getStore?.()
+  const host = listing?.members?.find((m) => m.isHost)
+  if (host?.clientId && String(host.clientId).startsWith('discord:')) {
+    ids.add(String(host.clientId).slice('discord:'.length))
+  }
+  const ign = listing?.hostIgn || host?.ign
+  if (ign && store?.findDiscordUserIdsByIgn) {
+    for (const uid of store.findDiscordUserIdsByIgn(ign)) ids.add(uid)
+  }
+  return [...ids]
+}
+
+/**
+ * @param {string} guildId
+ * @param {string[]} userIds
+ */
+async function guildHasAnyMember(guildId, userIds) {
+  if (!client || !guildId || !userIds.length) return false
+  try {
+    const guild = await client.guilds.fetch(guildId)
+    for (const uid of userIds) {
+      try {
+        await guild.members.fetch(uid)
+        return true
+      } catch {
+        // not in guild
+      }
+    }
+  } catch (err) {
+    console.warn(
+      '[lfg-api] Discord guild member check failed:',
+      err instanceof Error ? err.message : err,
+    )
+  }
+  return false
+}
+
+/**
+ * @param {object} listing
+ * @returns {Promise<Array<{ guildId: string | null, channelId: string, webhookUrl?: string | null, membersOnly?: boolean }>>}
+ */
+async function resolveTargetsForListing(listing) {
+  const targets = resolveAnnounceTargets()
+  const hostIds = hostDiscordUserIds(listing)
+  /** @type {typeof targets} */
+  const out = []
+  for (const t of targets) {
+    if (!t.membersOnly || !t.guildId) {
+      out.push(t)
+      continue
+    }
+    if (!hostIds.length) continue
+    if (await guildHasAnyMember(t.guildId, hostIds)) out.push(t)
+  }
+  return out
 }
 
 /**
@@ -212,6 +283,14 @@ function buildSlashCommands() {
               .setDescription('Text channel for LFG posts')
               .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
               .setRequired(true),
+          )
+          .addBooleanOption((opt) =>
+            opt
+              .setName('members_only')
+              .setDescription(
+                'Only announce squads whose host linked IGN is in this Discord server',
+              )
+              .setRequired(false),
           ),
       )
       .addSubcommand((sc) =>
@@ -223,7 +302,7 @@ function buildSlashCommands() {
       .addSubcommand((sc) =>
         sc
           .setName('link')
-          .setDescription('Save your Warframe IGN for one-click Join')
+          .setDescription('Save your Warframe IGN (Join + members-only announces)')
           .addStringOption((opt) =>
             opt
               .setName('ign')
@@ -290,6 +369,11 @@ async function handleSetupCommand(interaction) {
     return
   }
 
+  const membersOnlyOpt = interaction.options.getBoolean('members_only')
+  const prev = store.getDiscordGuild?.(interaction.guildId)
+  const membersOnly =
+    typeof membersOnlyOpt === 'boolean' ? membersOnlyOpt : Boolean(prev?.membersOnly)
+
   await interaction.deferReply({ flags: MessageFlags.Ephemeral })
 
   let webhookUrl = null
@@ -320,14 +404,18 @@ async function handleSetupCommand(interaction) {
     channelId: channel.id,
     webhookUrl,
     configuredBy: interaction.user.id,
+    membersOnly,
   })
 
   const bits = [
     `LFG announces will post in <#${channel.id}>.`,
+    membersOnly
+      ? '**Members only:** on — only squads whose host ran `/lfg link` with an IGN matching a member of this server.'
+      : '**Members only:** off — all hub squads are announced here.',
     webhookUrl
       ? 'A channel webhook was created/reused as fallback.'
       : 'Could not create a webhook (bot needs Manage Webhooks) — bot posts will still work.',
-    'Hub squads from Everything Warframe will appear here with live slots + Whisper.',
+    'Hosts: `/lfg link ign:YourIgn` so members-only servers can recognize you.',
   ]
   await interaction.editReply({ content: bits.join('\n') })
 }
@@ -358,8 +446,12 @@ async function handleStatusCommand(interaction) {
   await interaction.reply({
     content: [
       `Channel: <#${cfg.channelId}>`,
+      `Members only: ${cfg.membersOnly ? 'yes' : 'no'}`,
       `Webhook fallback: ${cfg.webhookUrl ? 'yes' : 'no'}`,
       cfg.configuredAt ? `Configured: ${cfg.configuredAt}` : '',
+      cfg.membersOnly
+        ? 'Hosts must `/lfg link` their IGN and be in this server to announce here.'
+        : '',
     ]
       .filter(Boolean)
       .join('\n'),
@@ -408,7 +500,12 @@ async function handleLinkCommand(interaction) {
   }
   store?.setDiscordUserIgn?.(interaction.user.id, ign)
   await interaction.reply({
-    content: `Linked IGN **${ign}**. Join on LFG posts will use this name. Change anytime with \`/lfg link\`.`,
+    content: [
+      `Linked IGN **${ign}**.`,
+      'Join on LFG posts will use this name.',
+      'Servers with **members only** announce will show your hub squads when you post with this IGN.',
+      'Change anytime with `/lfg link`.',
+    ].join(' '),
     flags: MessageFlags.Ephemeral,
   })
 }
@@ -653,16 +750,25 @@ export function startDiscordBot(storeGetter) {
 }
 
 /**
- * Post to all configured guild channels (+ env fallback).
+ * Post to configured guild channels (+ env fallback), respecting members_only.
  * @param {object} listing
- * @returns {Promise<{ messageId: string | null, posts: Array<{ guildId: string | null, channelId: string, messageId: string }> }>}
+ * @returns {Promise<{ messageId: string | null, posts: Array<{ guildId: string | null, channelId: string, messageId: string }>, filteredOut?: boolean }>}
  */
 export async function createLfgMessage(listing) {
   if (!isBotReady()) return { messageId: null, posts: [] }
-  const targets = resolveAnnounceTargets()
-  if (!targets.length) {
+  const allTargets = resolveAnnounceTargets()
+  if (!allTargets.length) {
     console.warn('[lfg-api] Discord bot ready but no channels configured (/lfg setup or DISCORD_CHANNEL_ID)')
     return { messageId: null, posts: [] }
+  }
+
+  const targets = await resolveTargetsForListing(listing)
+  if (!targets.length) {
+    console.info(
+      '[lfg-api] Discord announce skipped (members_only filter) for',
+      listing?.hostIgn || listing?.id,
+    )
+    return { messageId: null, posts: [], filteredOut: true }
   }
 
   /** @type {Array<{ guildId: string | null, channelId: string, messageId: string }>} */
@@ -776,9 +882,12 @@ export function closeLfgMessage(listing, { deleteMessage = true } = {}) {
   })()
 }
 
-/** Guild webhook URLs saved by /lfg setup (for webhook-only fallback fan-out). */
+/** Guild webhook URLs for fallback (skips members_only guilds — those need bot membership checks). */
 export function listConfiguredWebhookUrls() {
   const store = getStore?.()
   const guilds = store?.listDiscordGuilds?.() || []
-  return guilds.map((g) => g.webhookUrl).filter(Boolean)
+  return guilds
+    .filter((g) => !g.membersOnly && g.webhookUrl)
+    .map((g) => g.webhookUrl)
+    .filter(Boolean)
 }

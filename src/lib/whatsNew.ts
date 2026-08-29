@@ -410,6 +410,11 @@ export const WHATS_NEW: Record<string, string[]> = {
     'Relic OCR scrub for truncated Blueprint/Neuroptics/Chassis names',
     'Faster fissure picks: skip readiness wait when capture stream is already live',
   ],
+  '0.9.88': [
+    'LFG Discord hub: live slots, Join / Leave / Whisper buttons, /lfg setup per server',
+    'Members-only announce: servers can limit posts to hosts linked in that Discord',
+    'Personal Discord webhook in LFG Advanced settings; richer mission suggestions',
+  ],
 }
 
 export function getWhatsNewBullets(version: string): string[] {

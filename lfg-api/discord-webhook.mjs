@@ -193,6 +193,10 @@ export async function createHubDiscord(listing) {
         posts: result.posts || [],
       }
     }
+    // members_only filtered every guild — do not spam those channels via webhook
+    if (result.filteredOut) {
+      return { messageId: null, posts: [] }
+    }
     console.warn('[lfg-api] Discord bot create returned no posts; trying webhook fallback')
   }
 

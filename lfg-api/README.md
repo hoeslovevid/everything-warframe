@@ -105,10 +105,17 @@ DISCORD_BOT_TOKEN=your-bot-token
 /lfg setup channel:#your-lfg-channel
 ```
 
+Optional: only announce squads whose host is in **this** Discord server:
+
+```
+/lfg setup channel:#your-lfg-channel members_only:True
+```
+
 That stores the channel in the hub DB and auto-creates a channel webhook as fallback.  
+With **members only**, the host must have run `/lfg link` (or joined Discord with a matching IGN) and be a member of that server — otherwise that guild is skipped.  
 Also useful: `/lfg status`, `/lfg clear`.
 
-7. Anyone can save their Warframe name for one-click Join:
+7. Anyone can save their Warframe name for Join **and** members-only announce matching:
 
 ```
 /lfg link ign:YourIgn
@@ -116,7 +123,7 @@ Also useful: `/lfg status`, `/lfg clear`.
 
 **Join** on a post uses that IGN (or opens a modal if not linked), updates the hub roster, refreshes the Discord embed, and the companion LFG board shows it on the next poll. **Leave** removes a Discord join (`discord:<userId>`). **Whisper** still returns the `/w` line for in-game invite.
 
-Redeploy after setting the token. Logs should show `Discord bot ready` and slash commands registered. New hub squads fan out to every server that ran `/lfg setup` (plus `DISCORD_CHANNEL_ID` if set).
+Redeploy after setting the token. Logs should show `Discord bot ready` and slash commands registered. New hub squads fan out to every server that ran `/lfg setup` (plus `DISCORD_CHANNEL_ID` if set), except **members only** guilds filter by host membership as above.
 
 ### Hub webhook (fallback)
 
@@ -126,7 +133,7 @@ If the bot is not configured (or login fails), set:
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/ID/TOKEN
 ```
 
-Same live slot updates, but **no Whisper button** (webhooks cannot handle button clicks). Guild webhooks created by `/lfg setup` are also used as fallback when the bot is down.
+Same live slot updates, but **no Whisper button** (webhooks cannot handle button clicks). Guild webhooks created by `/lfg setup` are also used as fallback when the bot is down — **except** for **members only** guilds (those require the bot’s membership check; they are not webhook-spammed).
 
 Every successful `POST /listings` posts an embed. Join/leave PATCH the same message. Close/expiry marks closed, then deletes.
 
@@ -140,8 +147,8 @@ the app (not sent to the hub). Independent of the hub bot.
 
 - `listings` — one row per open squad (TTL via `expires_at`)
 - `members` — squad roster (`listing_id` + `client_id`)
-- `discord_guild_settings` — per-server channel from `/lfg setup`
-- `discord_user_profiles` — Discord user → Warframe IGN from `/lfg link`
+- `discord_guild_settings` — per-server channel + optional `members_only` from `/lfg setup`
+- `discord_user_profiles` — Discord user → Warframe IGN from `/lfg link` (Join + members-only matching)
 
 Old `lfg-data.json` files are imported automatically on first SQLite open, then renamed to `*.migrated`.
 

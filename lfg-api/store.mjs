@@ -23,13 +23,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
  * @property {(id: string) => any | null} get
  * @property {(row: any) => void} upsert
  * @property {(id: string) => void} remove
- * @property {() => Array<{ guildId: string, channelId: string, webhookUrl: string | null, configuredBy: string | null, configuredAt: string }>} listDiscordGuilds
+ * @property {() => Array<{ guildId: string, channelId: string, webhookUrl: string | null, configuredBy: string | null, configuredAt: string, membersOnly: boolean }>} listDiscordGuilds
  * @property {(guildId: string) => any | null} getDiscordGuild
- * @property {(row: { guildId: string, channelId: string, webhookUrl?: string | null, configuredBy?: string | null }) => void} upsertDiscordGuild
+ * @property {(row: { guildId: string, channelId: string, webhookUrl?: string | null, configuredBy?: string | null, membersOnly?: boolean }) => void} upsertDiscordGuild
  * @property {(guildId: string) => void} removeDiscordGuild
  * @property {(discordUserId: string) => string | null} getDiscordUserIgn
  * @property {(discordUserId: string, ign: string) => void} setDiscordUserIgn
  * @property {(discordUserId: string) => void} clearDiscordUserIgn
+ * @property {(ign: string) => string[]} findDiscordUserIdsByIgn
  * @property {() => void} [close]
  */
 
@@ -123,6 +124,7 @@ function createJsonStore(filePath) {
             webhookUrl: g.webhookUrl ? String(g.webhookUrl) : null,
             configuredBy: g.configuredBy ? String(g.configuredBy) : null,
             configuredAt: g.configuredAt || new Date().toISOString(),
+            membersOnly: Boolean(g.membersOnly),
           })
         }
       }
@@ -202,12 +204,17 @@ function createJsonStore(filePath) {
       return discordGuilds.get(guildId) || null
     },
     upsertDiscordGuild(row) {
+      const prev = discordGuilds.get(row.guildId)
       discordGuilds.set(row.guildId, {
         guildId: row.guildId,
         channelId: row.channelId,
         webhookUrl: row.webhookUrl || null,
         configuredBy: row.configuredBy || null,
         configuredAt: new Date().toISOString(),
+        membersOnly:
+          typeof row.membersOnly === 'boolean'
+            ? row.membersOnly
+            : Boolean(prev?.membersOnly),
       })
       save()
     },
@@ -223,6 +230,18 @@ function createJsonStore(filePath) {
     },
     clearDiscordUserIgn(discordUserId) {
       if (discordUserIgns.delete(discordUserId)) save()
+    },
+    findDiscordUserIdsByIgn(ign) {
+      const needle = String(ign || '')
+        .trim()
+        .toLowerCase()
+      if (!needle) return []
+      /** @type {string[]} */
+      const out = []
+      for (const [uid, linked] of discordUserIgns) {
+        if (String(linked).trim().toLowerCase() === needle) out.push(uid)
+      }
+      return out
     },
   }
 }
@@ -307,7 +326,8 @@ const SCHEMA_SQL = `
     channel_id TEXT NOT NULL,
     webhook_url TEXT,
     configured_by TEXT,
-    configured_at TEXT NOT NULL
+    configured_at TEXT NOT NULL,
+    members_only INTEGER NOT NULL DEFAULT 0
   );
   CREATE TABLE IF NOT EXISTS discord_user_profiles (
     discord_user_id TEXT PRIMARY KEY,
@@ -353,9 +373,18 @@ function openNodeSqlite(dbPath, DatabaseSync) {
       channel_id TEXT NOT NULL,
       webhook_url TEXT,
       configured_by TEXT,
-      configured_at TEXT NOT NULL
+      configured_at TEXT NOT NULL,
+      members_only INTEGER NOT NULL DEFAULT 0
     );
   `)
+  const guildCols = new Set(
+    all(`PRAGMA table_info(discord_guild_settings)`).map((c) => c.name),
+  )
+  if (!guildCols.has('members_only')) {
+    db.exec(
+      `ALTER TABLE discord_guild_settings ADD COLUMN members_only INTEGER NOT NULL DEFAULT 0`,
+    )
+  }
   db.exec(`
     CREATE TABLE IF NOT EXISTS discord_user_profiles (
       discord_user_id TEXT PRIMARY KEY,
@@ -467,6 +496,7 @@ function openNodeSqlite(dbPath, DatabaseSync) {
         webhookUrl: r.webhook_url || null,
         configuredBy: r.configured_by || null,
         configuredAt: r.configured_at,
+        membersOnly: Boolean(r.members_only),
       }))
     },
     getDiscordGuild(guildId) {
@@ -480,23 +510,31 @@ function openNodeSqlite(dbPath, DatabaseSync) {
         webhookUrl: r.webhook_url || null,
         configuredBy: r.configured_by || null,
         configuredAt: r.configured_at,
+        membersOnly: Boolean(r.members_only),
       }
     },
     upsertDiscordGuild(row) {
+      const prev = store.getDiscordGuild(row.guildId)
+      const membersOnly =
+        typeof row.membersOnly === 'boolean'
+          ? row.membersOnly
+          : Boolean(prev?.membersOnly)
       run(
-        `INSERT INTO discord_guild_settings (guild_id, channel_id, webhook_url, configured_by, configured_at)
-         VALUES ($guild_id, $channel_id, $webhook_url, $configured_by, $configured_at)
+        `INSERT INTO discord_guild_settings (guild_id, channel_id, webhook_url, configured_by, configured_at, members_only)
+         VALUES ($guild_id, $channel_id, $webhook_url, $configured_by, $configured_at, $members_only)
          ON CONFLICT(guild_id) DO UPDATE SET
            channel_id = excluded.channel_id,
            webhook_url = excluded.webhook_url,
            configured_by = excluded.configured_by,
-           configured_at = excluded.configured_at`,
+           configured_at = excluded.configured_at,
+           members_only = excluded.members_only`,
         {
           guild_id: row.guildId,
           channel_id: row.channelId,
           webhook_url: row.webhookUrl || null,
           configured_by: row.configuredBy || null,
           configured_at: new Date().toISOString(),
+          members_only: membersOnly ? 1 : 0,
         },
       )
     },
@@ -528,6 +566,15 @@ function openNodeSqlite(dbPath, DatabaseSync) {
       run(`DELETE FROM discord_user_profiles WHERE discord_user_id = $id`, {
         id: discordUserId,
       })
+    },
+    findDiscordUserIdsByIgn(ign) {
+      const needle = String(ign || '')
+        .trim()
+        .toLowerCase()
+      if (!needle) return []
+      return all(`SELECT discord_user_id, ign FROM discord_user_profiles`)
+        .filter((r) => String(r.ign || '').trim().toLowerCase() === needle)
+        .map((r) => String(r.discord_user_id))
     },
     close() {
       db.close()

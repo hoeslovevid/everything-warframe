@@ -20,7 +20,7 @@ Or from this folder:
 npm start
 ```
 
-(`npm install` is optional — this package has **zero** runtime dependencies.)
+(`npm install` is required only if you use the Discord bot — `discord.js`. Core hub uses **node:sqlite**.)
 
 Listens on `http://0.0.0.0:17864` (or `PORT`). Leave **Hub URL** empty in the app to auto-start a local hub, or set Hub URL to `http://YOUR_LAN_IP:17864` on friends’ PCs.
 
@@ -77,11 +77,62 @@ In Everything Warframe → **LFG** → set **Hub URL** to the HTTPS domain (no t
 | `LFG_DATA` | `./data/lfg.sqlite` | Full path to SQLite (or `.json` to force JSON) |
 | `LFG_DATA_DIR` | `./data` | Used when `LFG_DATA` is unset |
 | `LFG_ORIGIN` | `*` | CORS allow origin |
+| `DISCORD_BOT_TOKEN` | unset | Bot login (required for bot + `/lfg setup`) |
+| `DISCORD_CHANNEL_ID` | unset | Optional fallback channel if no `/lfg setup` yet |
+| `DISCORD_WEBHOOK_URL` | unset | Fallback announce if bot unset/unavailable |
+
+## Discord (optional)
+
+### Hub bot (recommended)
+
+Posts embeds with live slots/roster and a **Whisper** button (ephemeral `/w` line for copy-paste).
+
+1. [Discord Developer Portal](https://discord.com/developers/applications) → **New Application** → **Bot** → copy token.
+2. Enable no privileged intents (Guilds only).
+3. OAuth2 → URL Generator → scopes: `bot` **and** `applications.commands` → permissions: **Send Messages**, **Embed Links**, **Read Message History**, **Manage Webhooks**.
+4. Invite the bot to your server(s).
+5. Railway / host variable (only the token is required):
+
+```bash
+DISCORD_BOT_TOKEN=your-bot-token
+# optional until an admin runs /lfg setup:
+# DISCORD_CHANNEL_ID=123456789012345678
+```
+
+6. In Discord (Manage Server), run:
+
+```
+/lfg setup channel:#your-lfg-channel
+```
+
+That stores the channel in the hub DB and auto-creates a channel webhook as fallback.  
+Also useful: `/lfg status`, `/lfg clear`.
+
+Redeploy after setting the token. Logs should show `Discord bot ready` and slash commands registered. New hub squads fan out to every server that ran `/lfg setup` (plus `DISCORD_CHANNEL_ID` if set).
+
+### Hub webhook (fallback)
+
+If the bot is not configured (or login fails), set:
+
+```bash
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/ID/TOKEN
+```
+
+Same live slot updates, but **no Whisper button** (webhooks cannot handle button clicks). Guild webhooks created by `/lfg setup` are also used as fallback when the bot is down.
+
+Every successful `POST /listings` posts an embed. Join/leave PATCH the same message. Close/expiry marks closed, then deletes.
+
+### Personal webhook (desktop app)
+
+In the companion **LFG → Advanced hub settings**: enable **Discord notify on post** and paste your
+own webhook URL. That posts only squads **you** create, to **your** Discord — the URL never leaves
+the app (not sent to the hub). Independent of the hub bot.
 
 ## Schema (SQLite)
 
 - `listings` — one row per open squad (TTL via `expires_at`)
 - `members` — squad roster (`listing_id` + `client_id`)
+- `discord_guild_settings` — per-server channel from `/lfg setup`
 
 Old `lfg-data.json` files are imported automatically on first SQLite open, then renamed to `*.migrated`.
 

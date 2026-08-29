@@ -18,11 +18,15 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
  * @property {string} kind
  * @property {string} path
  * @property {() => number} count
- * @property {() => number} purgeExpired
+ * @property {() => any[]} purgeExpired  returns removed rows (for Discord cleanup)
  * @property {(filters?: { region?: string, platform?: string, activity?: string, q?: string }) => any[]} list
  * @property {(id: string) => any | null} get
  * @property {(row: any) => void} upsert
  * @property {(id: string) => void} remove
+ * @property {() => Array<{ guildId: string, channelId: string, webhookUrl: string | null, configuredBy: string | null, configuredAt: string }>} listDiscordGuilds
+ * @property {(guildId: string) => any | null} getDiscordGuild
+ * @property {(row: { guildId: string, channelId: string, webhookUrl?: string | null, configuredBy?: string | null }) => void} upsertDiscordGuild
+ * @property {(guildId: string) => void} removeDiscordGuild
  * @property {() => void} [close]
  */
 
@@ -93,6 +97,8 @@ function createJsonStore(filePath) {
   ensureParentDir(filePath)
   /** @type {Map<string, any>} */
   const listings = new Map()
+  /** @type {Map<string, any>} */
+  const discordGuilds = new Map()
 
   function load() {
     try {
@@ -102,6 +108,19 @@ function createJsonStore(filePath) {
       for (const row of arr) {
         if (row?.id) listings.set(row.id, row)
       }
+      const guilds =
+        raw?.discordGuilds && typeof raw.discordGuilds === 'object' ? raw.discordGuilds : {}
+      for (const [guildId, g] of Object.entries(guilds)) {
+        if (g && typeof g === 'object' && g.channelId) {
+          discordGuilds.set(guildId, {
+            guildId,
+            channelId: String(g.channelId),
+            webhookUrl: g.webhookUrl ? String(g.webhookUrl) : null,
+            configuredBy: g.configuredBy ? String(g.configuredBy) : null,
+            configuredAt: g.configuredAt || new Date().toISOString(),
+          })
+        }
+      }
     } catch {
       // ignore corrupt
     }
@@ -110,7 +129,16 @@ function createJsonStore(filePath) {
   function save() {
     ensureParentDir(filePath)
     const tmp = `${filePath}.${process.pid}.tmp`
-    const payload = JSON.stringify({ listings: [...listings.values()] }, null, 0)
+    const payload = JSON.stringify(
+      {
+        listings: [...listings.values()],
+        discordGuilds: Object.fromEntries(
+          [...discordGuilds.entries()].map(([id, g]) => [id, g]),
+        ),
+      },
+      null,
+      0,
+    )
     fs.writeFileSync(tmp, payload, 'utf8')
     fs.renameSync(tmp, filePath)
   }
@@ -126,15 +154,16 @@ function createJsonStore(filePath) {
     },
     purgeExpired() {
       const now = Date.now()
-      let n = 0
+      /** @type {any[]} */
+      const removed = []
       for (const [id, row] of listings) {
         if (Date.parse(row.expiresAt) <= now) {
+          removed.push(row)
           listings.delete(id)
-          n++
         }
       }
-      if (n) save()
-      return n
+      if (removed.length) save()
+      return removed
     },
     list(filters = {}) {
       const rows = applyFilters([...listings.values()], filters)
@@ -151,10 +180,43 @@ function createJsonStore(filePath) {
     remove(id) {
       if (listings.delete(id)) save()
     },
+    listDiscordGuilds() {
+      return [...discordGuilds.values()]
+    },
+    getDiscordGuild(guildId) {
+      return discordGuilds.get(guildId) || null
+    },
+    upsertDiscordGuild(row) {
+      discordGuilds.set(row.guildId, {
+        guildId: row.guildId,
+        channelId: row.channelId,
+        webhookUrl: row.webhookUrl || null,
+        configuredBy: row.configuredBy || null,
+        configuredAt: new Date().toISOString(),
+      })
+      save()
+    },
+    removeDiscordGuild(guildId) {
+      if (discordGuilds.delete(guildId)) save()
+    },
+  }
+}
+
+function parseDiscordPosts(raw) {
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
   }
 }
 
 function rowFromSqlite(listing, members) {
+  const discordPosts = parseDiscordPosts(listing.discord_posts)
+  const discordMessageId =
+    listing.discord_message_id || discordPosts[0]?.messageId || null
   return {
     id: listing.id,
     createdAt: listing.created_at,
@@ -173,6 +235,8 @@ function rowFromSqlite(listing, members) {
     steelPath: Boolean(listing.steel_path),
     missionHint: listing.mission_hint,
     slotsTotal: listing.slots_total,
+    discordMessageId,
+    discordPosts,
     members: members.map((m) => ({
       ign: m.ign,
       clientId: m.client_id,
@@ -200,7 +264,9 @@ const SCHEMA_SQL = `
     share_type TEXT,
     steel_path INTEGER NOT NULL DEFAULT 0,
     mission_hint TEXT,
-    slots_total INTEGER NOT NULL
+    slots_total INTEGER NOT NULL,
+    discord_message_id TEXT,
+    discord_posts TEXT
   );
   CREATE TABLE IF NOT EXISTS members (
     listing_id TEXT NOT NULL,
@@ -210,6 +276,13 @@ const SCHEMA_SQL = `
     is_host INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (listing_id, client_id),
     FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE CASCADE
+  );
+  CREATE TABLE IF NOT EXISTS discord_guild_settings (
+    guild_id TEXT PRIMARY KEY,
+    channel_id TEXT NOT NULL,
+    webhook_url TEXT,
+    configured_by TEXT,
+    configured_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_listings_expires ON listings(expires_at);
   CREATE INDEX IF NOT EXISTS idx_listings_created ON listings(created_at);
@@ -236,6 +309,24 @@ function openNodeSqlite(dbPath, DatabaseSync) {
   const all = (sql, params = {}) => db.prepare(sql).all(params)
   const getOne = (sql, params = {}) => db.prepare(sql).get(params)
 
+  // Additive migration for existing volumes
+  const listingCols = new Set(all(`PRAGMA table_info(listings)`).map((c) => c.name))
+  if (!listingCols.has('discord_message_id')) {
+    db.exec(`ALTER TABLE listings ADD COLUMN discord_message_id TEXT`)
+  }
+  if (!listingCols.has('discord_posts')) {
+    db.exec(`ALTER TABLE listings ADD COLUMN discord_posts TEXT`)
+  }
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS discord_guild_settings (
+      guild_id TEXT PRIMARY KEY,
+      channel_id TEXT NOT NULL,
+      webhook_url TEXT,
+      configured_by TEXT,
+      configured_at TEXT NOT NULL
+    );
+  `)
+
   function hydrate(listingRow) {
     if (!listingRow) return null
     const members = all(
@@ -253,11 +344,14 @@ function openNodeSqlite(dbPath, DatabaseSync) {
       return getOne(`SELECT COUNT(*) AS n FROM listings`).n
     },
     purgeExpired() {
-      const before = store.count()
-      run(`DELETE FROM listings WHERE expires_at <= $now`, {
-        now: new Date().toISOString(),
-      })
-      return Math.max(0, before - store.count())
+      const now = new Date().toISOString()
+      const expired = all(`SELECT * FROM listings WHERE expires_at <= $now`, { now }).map((r) =>
+        hydrate(r),
+      )
+      if (expired.length) {
+        run(`DELETE FROM listings WHERE expires_at <= $now`, { now })
+      }
+      return expired
     },
     list(filters = {}) {
       return applyFilters(
@@ -275,10 +369,12 @@ function openNodeSqlite(dbPath, DatabaseSync) {
         run(
           `INSERT INTO listings (
             id, created_at, expires_at, host_ign, host_token, platform, region, language,
-            activity, title, notes, relic_key, refinement, share_type, steel_path, mission_hint, slots_total
+            activity, title, notes, relic_key, refinement, share_type, steel_path, mission_hint,
+            slots_total, discord_message_id, discord_posts
           ) VALUES (
             $id, $created_at, $expires_at, $host_ign, $host_token, $platform, $region, $language,
-            $activity, $title, $notes, $relic_key, $refinement, $share_type, $steel_path, $mission_hint, $slots_total
+            $activity, $title, $notes, $relic_key, $refinement, $share_type, $steel_path, $mission_hint,
+            $slots_total, $discord_message_id, $discord_posts
           )`,
           {
             id: row.id,
@@ -298,6 +394,11 @@ function openNodeSqlite(dbPath, DatabaseSync) {
             steel_path: row.steelPath ? 1 : 0,
             mission_hint: row.missionHint,
             slots_total: row.slotsTotal,
+            discord_message_id: row.discordMessageId || null,
+            discord_posts:
+              row.discordPosts && Array.isArray(row.discordPosts) && row.discordPosts.length
+                ? JSON.stringify(row.discordPosts)
+                : null,
           },
         )
         for (const m of row.members || []) {
@@ -321,6 +422,49 @@ function openNodeSqlite(dbPath, DatabaseSync) {
     },
     remove(id) {
       run(`DELETE FROM listings WHERE id = $id`, { id })
+    },
+    listDiscordGuilds() {
+      return all(`SELECT * FROM discord_guild_settings ORDER BY configured_at ASC`).map((r) => ({
+        guildId: r.guild_id,
+        channelId: r.channel_id,
+        webhookUrl: r.webhook_url || null,
+        configuredBy: r.configured_by || null,
+        configuredAt: r.configured_at,
+      }))
+    },
+    getDiscordGuild(guildId) {
+      const r = getOne(`SELECT * FROM discord_guild_settings WHERE guild_id = $id`, {
+        id: guildId,
+      })
+      if (!r) return null
+      return {
+        guildId: r.guild_id,
+        channelId: r.channel_id,
+        webhookUrl: r.webhook_url || null,
+        configuredBy: r.configured_by || null,
+        configuredAt: r.configured_at,
+      }
+    },
+    upsertDiscordGuild(row) {
+      run(
+        `INSERT INTO discord_guild_settings (guild_id, channel_id, webhook_url, configured_by, configured_at)
+         VALUES ($guild_id, $channel_id, $webhook_url, $configured_by, $configured_at)
+         ON CONFLICT(guild_id) DO UPDATE SET
+           channel_id = excluded.channel_id,
+           webhook_url = excluded.webhook_url,
+           configured_by = excluded.configured_by,
+           configured_at = excluded.configured_at`,
+        {
+          guild_id: row.guildId,
+          channel_id: row.channelId,
+          webhook_url: row.webhookUrl || null,
+          configured_by: row.configuredBy || null,
+          configured_at: new Date().toISOString(),
+        },
+      )
+    },
+    removeDiscordGuild(guildId) {
+      run(`DELETE FROM discord_guild_settings WHERE guild_id = $id`, { id: guildId })
     },
     close() {
       db.close()

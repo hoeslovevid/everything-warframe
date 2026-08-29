@@ -261,8 +261,15 @@ export async function listLfg(opts?: {
     const { result, baseUrl, warning } = await withHubFallback((base) =>
       fetchJson(`${base}/listings${qs ? `?${qs}` : ''}`),
     )
+    const listings = (result.listings || []) as LfgListing[]
+    try {
+      const { syncPersonalDiscordFromListings } = await import('./lfg-discord')
+      syncPersonalDiscordFromListings(listings)
+    } catch {
+      // ignore
+    }
     return {
-      listings: (result.listings || []) as LfgListing[],
+      listings,
       baseUrl,
       error: null,
       warning: warning || null,
@@ -287,7 +294,16 @@ export async function createLfg(
         body: JSON.stringify(input),
       }),
     )
-    return { ok: true, listing: result.listing, hostToken: result.hostToken, warning }
+    const listing = result.listing as LfgListing | undefined
+    if (listing) {
+      try {
+        const { notifyPersonalCreate } = await import('./lfg-discord')
+        void notifyPersonalCreate(listing)
+      } catch {
+        // ignore notify failures — listing already created
+      }
+    }
+    return { ok: true, listing, hostToken: result.hostToken, warning }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'Create failed' }
   }
@@ -342,6 +358,12 @@ export async function deleteLfg(input: {
         body: JSON.stringify({ hostToken: input.hostToken }),
       }),
     )
+    try {
+      const { notifyPersonalClose } = await import('./lfg-discord')
+      void notifyPersonalClose(input.id)
+    } catch {
+      // ignore
+    }
     return { ok: true }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'Delete failed' }

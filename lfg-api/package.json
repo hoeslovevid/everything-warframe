@@ -3,7 +3,7 @@
   "version": "1.1.1",
   "private": true,
   "type": "module",
-  "description": "Shared LFG hub API for Everything Warframe (zero npm deps — uses node:sqlite)",
+  "description": "Shared LFG hub API for Everything Warframe (node:sqlite + optional Discord bot)",
   "main": "server.mjs",
   "engines": {
     "node": ">=22.5.0"
@@ -11,5 +11,8 @@
   "scripts": {
     "start": "node boot.mjs",
     "dev": "node boot.mjs"
+  },
+  "dependencies": {
+    "discord.js": "^14.27.0"
   }
 }

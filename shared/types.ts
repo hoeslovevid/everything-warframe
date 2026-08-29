@@ -528,6 +528,15 @@ export type AppSettings = {
   lfgClientId: string
   /** Host tokens for listings you created (id → token). */
   lfgHostTokens: Record<string, string>
+  /**
+   * Optional Discord incoming webhook URL for your own server.
+   * When notify is on, each squad you post is also sent here.
+   */
+  lfgDiscordWebhookUrl: string
+  /** Opt-in: post to lfgDiscordWebhookUrl after a successful create. */
+  lfgDiscordNotifyOnCreate: boolean
+  /** Discord message ids for live personal-webhook updates (listing id → message id). */
+  lfgDiscordMessageIds: Record<string, string>
   /** Serve localhost HTML widgets for OBS / external overlays. */
   widgetServerEnabled: boolean
   /** Port for the widget HTTP server (127.0.0.1 only). */
@@ -843,6 +852,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   uiLocale: 'system',
   lfgClientId: '',
   lfgHostTokens: {},
+  lfgDiscordWebhookUrl: '',
+  lfgDiscordNotifyOnCreate: false,
+  lfgDiscordMessageIds: {},
   widgetServerEnabled: false,
   widgetServerPort: 17862,
   quietMode: false,

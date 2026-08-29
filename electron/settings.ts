@@ -439,6 +439,27 @@ function mergeSettings(raw: Partial<AppSettings> | null | undefined): AppSetting
             ).filter(([, v]) => typeof v === 'string') as Array<[string, string]>,
           )
         : base.lfgHostTokens,
+    lfgDiscordWebhookUrl: (() => {
+      const v = (raw as { lfgDiscordWebhookUrl?: string }).lfgDiscordWebhookUrl
+      if (typeof v !== 'string') return base.lfgDiscordWebhookUrl
+      return v.trim().slice(0, 220)
+    })(),
+    lfgDiscordNotifyOnCreate:
+      typeof (raw as { lfgDiscordNotifyOnCreate?: boolean }).lfgDiscordNotifyOnCreate ===
+      'boolean'
+        ? (raw as { lfgDiscordNotifyOnCreate: boolean }).lfgDiscordNotifyOnCreate
+        : base.lfgDiscordNotifyOnCreate,
+    lfgDiscordMessageIds:
+      raw &&
+      typeof (raw as { lfgDiscordMessageIds?: unknown }).lfgDiscordMessageIds === 'object' &&
+      (raw as { lfgDiscordMessageIds: object }).lfgDiscordMessageIds &&
+      !Array.isArray((raw as { lfgDiscordMessageIds: unknown }).lfgDiscordMessageIds)
+        ? Object.fromEntries(
+            Object.entries(
+              (raw as { lfgDiscordMessageIds: Record<string, unknown> }).lfgDiscordMessageIds,
+            ).filter(([, v]) => typeof v === 'string') as Array<[string, string]>,
+          )
+        : base.lfgDiscordMessageIds,
     widgetServerEnabled: raw.widgetServerEnabled ?? base.widgetServerEnabled,
     widgetServerPort:
       typeof raw.widgetServerPort === 'number' &&

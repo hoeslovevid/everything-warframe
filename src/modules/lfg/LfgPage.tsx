@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AppSettings, FissureInfo, LfgListing } from '../../../shared/types'
 import { EmptyState } from '../../components/EmptyState'
 import { Panel } from '../../components/Panel'
+import { ToggleRow } from '../../components/ToggleRow'
 import { useWorldstate } from '../../hooks/useVoidLens'
 import { pushToast } from '../../lib/toast'
 import { copyText } from '../../lib/tradeClipboard'
@@ -971,6 +972,27 @@ export function LfgPage({
                 <p className="muted" style={{ fontSize: '0.75rem', margin: 0 }}>
                   Defaults to the public board. Set to <code>local</code> for a private hub, or paste
                   another hosted URL. On Railway edge 429 the app falls back to local automatically.
+                </p>
+                <ToggleRow
+                  label="Discord notify on post"
+                  description="Send your new squads to a Discord channel via webhook (your server only)."
+                  checked={settings.lfgDiscordNotifyOnCreate}
+                  onChange={(next) => saveProfile({ lfgDiscordNotifyOnCreate: next })}
+                />
+                <label className="field">
+                  <span>Discord webhook URL</span>
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    value={settings.lfgDiscordWebhookUrl}
+                    placeholder="https://discord.com/api/webhooks/…"
+                    onChange={(e) => saveProfile({ lfgDiscordWebhookUrl: e.target.value })}
+                    disabled={!settings.lfgDiscordNotifyOnCreate}
+                  />
+                </label>
+                <p className="muted" style={{ fontSize: '0.75rem', margin: 0 }}>
+                  Discord → channel settings → Integrations → Webhooks. Stored locally; never sent to
+                  the LFG hub.
                 </p>
               </div>
             ) : null}

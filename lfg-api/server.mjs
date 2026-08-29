@@ -2,12 +2,19 @@
  * Everything Warframe — LFG hub API.
  * Run: node lfg-api/server.mjs
  * Env: PORT=17864  LFG_DATA=/data/lfg.sqlite  LFG_DATA_DIR=/data  LFG_ORIGIN=*
+ *      DISCORD_BOT_TOKEN (+ optional DISCORD_CHANNEL_ID) — bot; admins use /lfg setup
+ *      DISCORD_WEBHOOK_URL — optional hub announce fallback
  *
  * Persist listings on a Railway volume (SQLite). JSON fallback for local Electron.
  */
 import http from 'node:http'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { openStore, resolveDataPath } from './store.mjs'
+import {
+  closeHubDiscord,
+  createHubDiscord,
+  updateHubDiscord,
+} from './discord-webhook.mjs'
 
 const PORT = Number(process.env.PORT || process.env.LFG_PORT || 17864)
 const MAX_LISTINGS = 500
@@ -37,6 +44,8 @@ const RATE_MAX_WRITE = 120
  *  steelPath: boolean
  *  missionHint: string | null
  *  slotsTotal: number
+ *  discordMessageId?: string | null
+ *  discordPosts?: Array<{ guildId?: string | null, channelId: string, messageId: string, webhookUrl?: string }>
  *  members: Array<{ ign: string, clientId: string, joinedAt: string, isHost: boolean }>
  * }} Listing
  */
@@ -72,13 +81,32 @@ function rateOk(bucket, ip, max) {
 }
 
 function publicListing(row) {
-  const { hostToken, ...rest } = row
+  const { hostToken, discordMessageId, discordPosts, ...rest } = row
   return {
     ...rest,
     slotsOpen: Math.max(0, row.slotsTotal - row.members.length),
     whisper: buildWhisper(row),
     inviteHint: `/invite ${row.hostIgn}`,
   }
+}
+
+/** Strip secrets then attach whisper for Discord edits. */
+function listingForDiscord(row) {
+  return {
+    ...publicListing(row),
+    discordMessageId: row.discordMessageId || null,
+    discordPosts: Array.isArray(row.discordPosts) ? row.discordPosts : [],
+  }
+}
+
+function purgeExpiredWithDiscord() {
+  const removed = store.purgeExpired() || []
+  for (const row of removed) {
+    if (row.discordMessageId || (row.discordPosts && row.discordPosts.length)) {
+      closeHubDiscord(listingForDiscord(row))
+    }
+  }
+  return removed.length
 }
 
 function buildWhisper(row) {
@@ -135,6 +163,9 @@ function enforceCap() {
       (a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt),
     )[0]
     if (!oldest) break
+    if (oldest.discordMessageId || (oldest.discordPosts && oldest.discordPosts.length)) {
+      closeHubDiscord(listingForDiscord(oldest))
+    }
     store.remove(oldest.id)
   }
 }
@@ -159,7 +190,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (isHealth) {
-      store.purgeExpired()
+      purgeExpiredWithDiscord()
       send(res, 200, {
         ok: true,
         service: 'everything-warframe-lfg',
@@ -172,7 +203,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && pathname === '/listings') {
-      store.purgeExpired()
+      purgeExpiredWithDiscord()
       const rows = store.list({
         region: url.searchParams.get('region') || '',
         platform: url.searchParams.get('platform') || '',
@@ -222,6 +253,8 @@ const server = http.createServer(async (req, res) => {
         steelPath: Boolean(body.steelPath),
         missionHint: body.missionHint ? cleanStr(body.missionHint, 60) : null,
         slotsTotal,
+        discordMessageId: null,
+        discordPosts: [],
         members: [
           {
             ign: hostIgn,
@@ -231,10 +264,21 @@ const server = http.createServer(async (req, res) => {
           },
         ],
       }
-      store.purgeExpired()
+      purgeExpiredWithDiscord()
       enforceCap()
       store.upsert(row)
-      send(res, 201, { listing: publicListing(row), hostToken })
+      const pub = publicListing(row)
+      send(res, 201, { listing: pub, hostToken })
+      void createHubDiscord(pub).then((result) => {
+        const messageId = result?.messageId || null
+        const posts = result?.posts || []
+        if (!messageId && !posts.length) return
+        const fresh = store.get(id)
+        if (!fresh) return
+        fresh.discordMessageId = messageId
+        fresh.discordPosts = posts
+        store.upsert(fresh)
+      })
       return
     }
 
@@ -268,6 +312,7 @@ const server = http.createServer(async (req, res) => {
       })
       store.upsert(row)
       send(res, 200, { listing: publicListing(row) })
+      updateHubDiscord(listingForDiscord(row))
       return
     }
 
@@ -284,8 +329,10 @@ const server = http.createServer(async (req, res) => {
       row.members = row.members.filter((m) => m.clientId !== clientId)
       if (!row.members.length || !row.members.some((m) => m.isHost)) {
         store.remove(row.id)
+        closeHubDiscord(listingForDiscord(row))
       } else if (row.members.length !== before) {
         store.upsert(row)
+        updateHubDiscord(listingForDiscord(row))
       }
       send(res, 200, { ok: true })
       return
@@ -333,6 +380,7 @@ const server = http.createServer(async (req, res) => {
         return
       }
       store.remove(row.id)
+      closeHubDiscord(listingForDiscord(row))
       send(res, 200, { ok: true })
       return
     }
@@ -346,8 +394,25 @@ const server = http.createServer(async (req, res) => {
 async function main() {
   const dataPath = resolveDataPath()
   store = await openStore(dataPath)
-  store.purgeExpired()
-  setInterval(() => store?.purgeExpired(), 30_000)
+  purgeExpiredWithDiscord()
+  setInterval(() => {
+    if (store) purgeExpiredWithDiscord()
+  }, 30_000)
+
+  try {
+    const { startDiscordBot, isBotConfigured } = await import('./discord-bot.mjs')
+    if (isBotConfigured()) {
+      const ok = await startDiscordBot(() => store)
+      if (!ok) {
+        console.warn('[LFG] Discord bot not ready — webhook fallback still available')
+      }
+    }
+  } catch (err) {
+    console.warn(
+      '[LFG] Discord bot failed to start:',
+      err instanceof Error ? err.message : err,
+    )
+  }
 
   server.listen(PORT, '0.0.0.0', () => {
     console.info(`[LFG] Everything Warframe LFG hub on http://0.0.0.0:${PORT}`)

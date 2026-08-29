@@ -35,88 +35,92 @@ function rosterKey(listing: LfgListing) {
   return `${listing.members?.length ?? 0}/${listing.slotsTotal || 4}`
 }
 
+const BRAND_ICON_URL =
+  'https://cdn.jsdelivr.net/gh/hoeslovevid/everything-warframe@master/resources/icon-256.png'
+
+function slotBar(filled: number, total: number) {
+  const n = Math.max(2, Math.min(4, total))
+  const f = Math.max(0, Math.min(n, filled))
+  return `${'▰'.repeat(f)}${'▱'.repeat(n - f)}  **${f}/${n}**`
+}
+
+function activityMeta(activity: string) {
+  const a = String(activity || 'custom').toLowerCase()
+  const map: Record<string, { label: string; emoji: string; color: number }> = {
+    relic: { label: 'Relic', emoji: '◇', color: 0x4a9fd8 },
+    fissure: { label: 'Fissure', emoji: '◈', color: 0x6b7fd7 },
+    farm: { label: 'Farm', emoji: '▣', color: 0x3dba8c },
+    boss: { label: 'Boss', emoji: '⬡', color: 0xd4783c },
+    custom: { label: 'Custom', emoji: '◎', color: 0x5a8faf },
+  }
+  return map[a] || map.custom
+}
+
 function buildPayload(listing: LfgListing, opts: { closed?: boolean } = {}) {
   const closed = Boolean(opts.closed)
   const members = listing.members?.length ?? 1
   const slots = Math.max(2, listing.slotsTotal || 4)
   const full = !closed && members >= slots
-  const roster =
+  const meta = activityMeta(listing.activity)
+  const host = String(listing.hostIgn || '?').slice(0, 24)
+  const platform = String(listing.platform || 'pc').toUpperCase().slice(0, 16)
+  const region = String(listing.region || 'na').toUpperCase().slice(0, 8)
+
+  const rosterLines =
     listing.members?.length
-      ? listing.members
-          .map((m) => String(m.ign || '?').slice(0, 24))
-          .join(', ')
-          .slice(0, 200)
-      : String(listing.hostIgn || '?').slice(0, 24)
+      ? listing.members.map((m) => {
+          const ign = String(m.ign || '?').slice(0, 24)
+          return m.isHost ? `★ **${ign}** · host` : `• ${ign}`
+        })
+      : [`★ **${host}** · host`]
+  for (let i = rosterLines.length; i < slots; i++) {
+    rosterLines.push(`○ _open_`)
+  }
 
-  const fields: Array<{ name: string; value: string; inline?: boolean }> = [
-    { name: 'Host', value: String(listing.hostIgn || '?').slice(0, 24), inline: true },
-    {
-      name: 'Activity',
-      value: String(listing.activity || 'custom').slice(0, 24),
-      inline: true,
-    },
-    {
-      name: 'Slots',
-      value: closed ? `Closed · was ${members}/${slots}` : `${members}/${slots}${full ? ' · FULL' : ''}`,
-      inline: true,
-    },
-    { name: 'Roster', value: roster || '—', inline: false },
-    {
-      name: 'Platform',
-      value: String(listing.platform || 'pc').toUpperCase().slice(0, 16),
-      inline: true,
-    },
-    {
-      name: 'Region',
-      value: String(listing.region || 'na').toUpperCase().slice(0, 8),
-      inline: true,
-    },
-  ]
+  const detailBits = [`${meta.emoji} ${meta.label}`, platform, region]
+  if (listing.steelPath) detailBits.push('Steel Path')
   if (listing.relicKey) {
-    fields.push({
-      name: 'Relic',
-      value: [listing.relicKey, listing.refinement, listing.shareType]
-        .filter(Boolean)
-        .join(' · ')
-        .slice(0, 100),
-      inline: true,
-    })
-  }
-  if (listing.missionHint) {
-    fields.push({
-      name: 'Mission',
-      value: String(listing.missionHint).slice(0, 60),
-      inline: true,
-    })
-  }
-  if (listing.steelPath) {
-    fields.push({ name: 'Path', value: 'Steel Path', inline: true })
-  }
-
-  const descriptionBits: string[] = []
-  if (listing.notes) descriptionBits.push(String(listing.notes).slice(0, 160))
-  if (!closed && listing.whisper) {
-    descriptionBits.push(
-      `**Whisper** (select → copy)\n\`${String(listing.whisper).slice(0, 180)}\``,
+    detailBits.push(
+      [listing.relicKey, listing.refinement, listing.shareType].filter(Boolean).join(' · '),
     )
   }
+  if (listing.missionHint) detailBits.push(String(listing.missionHint).slice(0, 60))
 
-  const titleBase = String(listing.title || 'LFG').slice(0, 80)
-  let title = titleBase
-  if (closed) title = `${titleBase} · closed`
-  else if (full) title = `${titleBase} · FULL`
+  const titleBase = String(listing.title || 'Looking for group').slice(0, 70)
+  let color = meta.color
+  if (closed) color = 0x6b7280
+  else if (full) color = 0xd97706
+
+  const statusLine = closed
+    ? '**Status** · Closed'
+    : full
+      ? '**Status** · Full'
+      : `**Status** · Open · looking for ${Math.max(0, slots - members)}`
+
+  const descriptionBits = [statusLine]
+  if (listing.notes) descriptionBits.push(`\n${String(listing.notes).slice(0, 180)}`)
+
+  const inviteHint = listing.inviteHint || (listing.hostIgn ? `/invite ${listing.hostIgn}` : '')
+  const footerParts = []
+  if (inviteHint) footerParts.push(inviteHint)
+  footerParts.push('Everything Warframe')
 
   return {
     username: 'Everything Warframe LFG',
     embeds: [
       {
-        title: title.slice(0, 100),
-        description: descriptionBits.join('\n\n').slice(0, 500) || undefined,
-        color: closed ? 0x6b7280 : full ? 0xc45c26 : 0x3d9bb8,
-        fields,
-        footer: listing.inviteHint
-          ? { text: String(listing.inviteHint).slice(0, 100) }
-          : undefined,
+        author: { name: 'Everything Warframe · LFG', icon_url: BRAND_ICON_URL },
+        title: titleBase.slice(0, 100),
+        description: descriptionBits.join('\n').slice(0, 500) || undefined,
+        color,
+        thumbnail: { url: BRAND_ICON_URL },
+        fields: [
+          { name: 'Squad', value: slotBar(members, slots), inline: true },
+          { name: 'Details', value: detailBits.join(' · ').slice(0, 200), inline: true },
+          { name: 'Roster', value: rosterLines.join('\n').slice(0, 400), inline: false },
+        ],
+        footer: { text: footerParts.join(' · ').slice(0, 180), icon_url: BRAND_ICON_URL },
+        timestamp: listing.createdAt || new Date().toISOString(),
       },
     ],
   }

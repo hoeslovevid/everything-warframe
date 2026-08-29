@@ -10,6 +10,7 @@
 import http from 'node:http'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { openStore, resolveDataPath } from './store.mjs'
+import { joinListing, leaveListing } from './listing-actions.mjs'
 import {
   closeHubDiscord,
   createHubDiscord,
@@ -284,55 +285,37 @@ const server = http.createServer(async (req, res) => {
 
     const joinMatch = pathname.match(/^\/listings\/([^/]+)\/join$/)
     if (req.method === 'POST' && joinMatch) {
-      const row = store.get(joinMatch[1])
-      if (!row || Date.parse(row.expiresAt) <= Date.now()) {
-        send(res, 404, { error: 'Listing not found or expired' })
-        return
-      }
       const body = await readBody(req)
-      const ign = cleanStr(body.ign || body.hostIgn, 24)
-      const clientId = cleanStr(body.clientId, 64)
-      if (!ign || !clientId) {
-        send(res, 400, { error: 'ign and clientId required' })
-        return
-      }
-      if (row.members.some((m) => m.clientId === clientId)) {
-        send(res, 200, { listing: publicListing(row), alreadyJoined: true })
-        return
-      }
-      if (row.members.length >= row.slotsTotal) {
-        send(res, 409, { error: 'Squad full' })
-        return
-      }
-      row.members.push({
-        ign,
-        clientId,
-        joinedAt: new Date().toISOString(),
-        isHost: false,
+      const result = joinListing(store, joinMatch[1], {
+        ign: body.ign || body.hostIgn,
+        clientId: body.clientId,
       })
-      store.upsert(row)
-      send(res, 200, { listing: publicListing(row) })
-      updateHubDiscord(listingForDiscord(row))
+      if (!result.ok) {
+        send(res, result.status || 400, { error: result.error || 'Join failed' })
+        return
+      }
+      send(res, 200, {
+        listing: publicListing(result.row),
+        alreadyJoined: Boolean(result.alreadyJoined),
+      })
+      if (!result.alreadyJoined) {
+        updateHubDiscord(listingForDiscord(result.row))
+      }
       return
     }
 
     const leaveMatch = pathname.match(/^\/listings\/([^/]+)\/leave$/)
     if (req.method === 'POST' && leaveMatch) {
-      const row = store.get(leaveMatch[1])
-      if (!row) {
-        send(res, 404, { error: 'Listing not found' })
+      const body = await readBody(req)
+      const result = leaveListing(store, leaveMatch[1], { clientId: body.clientId })
+      if (!result.ok) {
+        send(res, result.status || 400, { error: result.error || 'Leave failed' })
         return
       }
-      const body = await readBody(req)
-      const clientId = cleanStr(body.clientId, 64)
-      const before = row.members.length
-      row.members = row.members.filter((m) => m.clientId !== clientId)
-      if (!row.members.length || !row.members.some((m) => m.isHost)) {
-        store.remove(row.id)
-        closeHubDiscord(listingForDiscord(row))
-      } else if (row.members.length !== before) {
-        store.upsert(row)
-        updateHubDiscord(listingForDiscord(row))
+      if (result.closed && result.row) {
+        closeHubDiscord(listingForDiscord(result.row))
+      } else if (result.changed && result.row) {
+        updateHubDiscord(listingForDiscord(result.row))
       }
       send(res, 200, { ok: true })
       return

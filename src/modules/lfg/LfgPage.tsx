@@ -9,6 +9,7 @@ import { copyText } from '../../lib/tradeClipboard'
 import '../market/market.css'
 import './lfg.css'
 import { LfgSearchSelect, type LfgSearchOption } from './LfgSearchSelect'
+import { catalogMissionOptions } from './lfgMissionCatalog'
 
 type ActivityId = 'relic' | 'fissure' | 'farm' | 'boss' | 'custom'
 
@@ -120,6 +121,36 @@ const PRESETS: Array<{
     }),
   },
   {
+    id: 'profit-taker',
+    label: 'Profit Taker',
+    apply: () => ({
+      activity: 'boss',
+      title: 'Profit Taker',
+      steelPath: false,
+      missionHint: 'Profit Taker · Orb Vallis',
+    }),
+  },
+  {
+    id: 'eidolons',
+    label: 'Eidolons',
+    apply: () => ({
+      activity: 'boss',
+      title: 'Eidolon hunt',
+      steelPath: false,
+      missionHint: 'Eidolons · Plains of Eidolon',
+    }),
+  },
+  {
+    id: 'index',
+    label: 'Index',
+    apply: () => ({
+      activity: 'farm',
+      title: 'Index credits',
+      steelPath: false,
+      missionHint: 'The Index · Neptune',
+    }),
+  },
+  {
     id: 'sp-surv',
     label: 'SP survival',
     apply: () => ({
@@ -127,6 +158,16 @@ const PRESETS: Array<{
       title: 'SP Survival',
       steelPath: true,
       missionHint: 'Survival',
+    }),
+  },
+  {
+    id: 'eso',
+    label: 'ESO',
+    apply: () => ({
+      activity: 'farm',
+      title: 'ESO',
+      steelPath: false,
+      missionHint: 'Elite Sanctuary Onslaught',
     }),
   },
 ]
@@ -281,14 +322,20 @@ export function LfgPage({
   }, [data.fissures, steelPath])
 
   const missionOptions = useMemo((): LfgSearchOption[] => {
-    const opts: LfgSearchOption[] = []
+    const live: LfgSearchOption[] = []
     for (const f of openFissures) {
       const hint = `${f.missionType} · ${f.node}`
-      opts.push({
+      live.push({
         id: `fis-${f.id}`,
         label: `${f.tier} · ${f.node}`,
         value: hint,
-        detail: [f.missionType, f.enemy, f.isHard ? 'Steel Path' : null, f.eta ? `ETA ${f.eta}` : null]
+        detail: [
+          'Live fissure',
+          f.missionType,
+          f.enemy,
+          f.isHard ? 'Steel Path' : null,
+          f.eta ? `ETA ${f.eta}` : null,
+        ]
           .filter(Boolean)
           .join(' · '),
         meta: {
@@ -303,11 +350,11 @@ export function LfgPage({
     const arb = data.arbitration
     if (arb?.node) {
       const hint = `${arb.type || 'Arbitration'} · ${arb.node}`
-      opts.push({
+      live.push({
         id: 'arb',
         label: `Arbitration · ${arb.node}`,
         value: hint,
-        detail: arb.enemy || 'Arbitration',
+        detail: ['Live', arb.enemy || 'Arbitration'].filter(Boolean).join(' · '),
         meta: { kind: 'arbitration', node: arb.node, missionType: arb.type },
       })
     }
@@ -315,17 +362,26 @@ export function LfgPage({
     if (sortie?.missions?.length) {
       sortie.missions.forEach((m, i) => {
         const hint = `${m.missionType || 'Sortie'} · ${m.node}`
-        opts.push({
+        live.push({
           id: `sortie-${i}`,
           label: `Sortie ${i + 1} · ${m.node}`,
           value: hint,
-          detail: [m.missionType, m.modifier].filter(Boolean).join(' · '),
+          detail: ['Live sortie', m.missionType, m.modifier].filter(Boolean).join(' · '),
           meta: { kind: 'sortie', node: m.node, missionType: m.missionType },
         })
       })
     }
-    return opts
-  }, [openFissures, data.arbitration, data.sortie])
+    const catalog = catalogMissionOptions(activity)
+    // Live first, then catalog (dedupe by value)
+    const seen = new Set(live.map((o) => o.value.toLowerCase()))
+    const merged = [...live]
+    for (const o of catalog) {
+      if (seen.has(o.value.toLowerCase())) continue
+      seen.add(o.value.toLowerCase())
+      merged.push(o)
+    }
+    return merged
+  }, [openFissures, data.arbitration, data.sortie, activity])
 
   const quickFissures = useMemo(() => openFissures.slice(0, 6), [openFissures])
 
@@ -819,7 +875,7 @@ export function LfgPage({
         <h2 className="page-title">LFG</h2>
         <div className="page-title-rule" />
         <p className="page-desc lfg-page-desc">
-          Hosted squad board — post intent, join open queues, copy whisper / invite.
+          Post a squad or join open queues — whisper / invite copy in one click.
           <span
             className={`lfg-hub-pill ${hubOk ? 'is-ok' : 'is-bad'}`}
             title={baseUrl || undefined}
@@ -911,47 +967,103 @@ export function LfgPage({
 
       <div className="lfg-layout">
         <aside className="lfg-side">
-          <Panel title="Your profile" subtitle="Shown on listings you host or join">
-            <label className="field">
-              <span>In-game name</span>
-              <input
-                value={settings.lfgIgn}
-                placeholder="Warframe IGN"
-                onChange={(e) => saveProfile({ lfgIgn: e.target.value })}
-              />
-            </label>
-            <label className="field">
-              <span>Platform</span>
-              <select
-                value={settings.lfgPlatform}
-                onChange={(e) =>
-                  saveProfile({
-                    lfgPlatform: e.target.value as AppSettings['lfgPlatform'],
-                  })
-                }
-              >
-                <option value="pc">PC</option>
-                <option value="psn">PlayStation</option>
-                <option value="xbox">Xbox</option>
-                <option value="switch">Switch</option>
-                <option value="mobile">Mobile</option>
-              </select>
-            </label>
-            <label className="field">
-              <span>Region</span>
-              <select
-                value={settings.lfgRegion}
-                onChange={(e) =>
-                  saveProfile({ lfgRegion: e.target.value as AppSettings['lfgRegion'] })
-                }
-              >
-                <option value="na">NA</option>
-                <option value="eu">EU</option>
-                <option value="asia">Asia</option>
-                <option value="sa">SA</option>
-                <option value="oce">OCE</option>
-              </select>
-            </label>
+          <Panel
+            title="Your profile"
+            subtitle={
+              settings.lfgIgn.trim()
+                ? `${settings.lfgIgn} · ${platformLabel(settings.lfgPlatform)} · ${regionLabel(settings.lfgRegion)}`
+                : 'Set your IGN so others can whisper you'
+            }
+          >
+            {!settings.lfgIgn.trim() ? (
+              <label className="field">
+                <span>In-game name</span>
+                <input
+                  value={settings.lfgIgn}
+                  placeholder="Warframe IGN"
+                  onChange={(e) => saveProfile({ lfgIgn: e.target.value })}
+                />
+              </label>
+            ) : (
+              <div className="lfg-profile-compact">
+                <label className="field" style={{ margin: 0, flex: 1 }}>
+                  <span>IGN</span>
+                  <input
+                    value={settings.lfgIgn}
+                    placeholder="Warframe IGN"
+                    onChange={(e) => saveProfile({ lfgIgn: e.target.value })}
+                  />
+                </label>
+                <label className="field" style={{ margin: 0, flex: 1 }}>
+                  <span>Platform</span>
+                  <select
+                    value={settings.lfgPlatform}
+                    onChange={(e) =>
+                      saveProfile({
+                        lfgPlatform: e.target.value as AppSettings['lfgPlatform'],
+                      })
+                    }
+                  >
+                    <option value="pc">PC</option>
+                    <option value="psn">PlayStation</option>
+                    <option value="xbox">Xbox</option>
+                    <option value="switch">Switch</option>
+                    <option value="mobile">Mobile</option>
+                  </select>
+                </label>
+                <label className="field" style={{ margin: 0, flex: 1 }}>
+                  <span>Region</span>
+                  <select
+                    value={settings.lfgRegion}
+                    onChange={(e) =>
+                      saveProfile({ lfgRegion: e.target.value as AppSettings['lfgRegion'] })
+                    }
+                  >
+                    <option value="na">NA</option>
+                    <option value="eu">EU</option>
+                    <option value="asia">Asia</option>
+                    <option value="sa">SA</option>
+                    <option value="oce">OCE</option>
+                  </select>
+                </label>
+              </div>
+            )}
+            {!settings.lfgIgn.trim() ? (
+              <>
+                <label className="field">
+                  <span>Platform</span>
+                  <select
+                    value={settings.lfgPlatform}
+                    onChange={(e) =>
+                      saveProfile({
+                        lfgPlatform: e.target.value as AppSettings['lfgPlatform'],
+                      })
+                    }
+                  >
+                    <option value="pc">PC</option>
+                    <option value="psn">PlayStation</option>
+                    <option value="xbox">Xbox</option>
+                    <option value="switch">Switch</option>
+                    <option value="mobile">Mobile</option>
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Region</span>
+                  <select
+                    value={settings.lfgRegion}
+                    onChange={(e) =>
+                      saveProfile({ lfgRegion: e.target.value as AppSettings['lfgRegion'] })
+                    }
+                  >
+                    <option value="na">NA</option>
+                    <option value="eu">EU</option>
+                    <option value="asia">Asia</option>
+                    <option value="sa">SA</option>
+                    <option value="oce">OCE</option>
+                  </select>
+                </label>
+              </>
+            ) : null}
             <button
               type="button"
               className="btn ghost lfg-advanced-toggle"
@@ -998,20 +1110,20 @@ export function LfgPage({
             ) : null}
           </Panel>
 
-          <Panel title="Post a squad" subtitle="Creates a listing on the hub">
+          <Panel title="Post a squad" subtitle="Pick a preset or fill the form — then post">
             <div className="lfg-presets" role="group" aria-label="Quick presets">
               {PRESETS.map((p) => (
                 <button
                   key={p.id}
                   type="button"
-                  className="btn ghost"
-                  style={{ fontSize: '0.72rem', padding: '4px 8px' }}
+                  className="btn ghost lfg-preset-chip"
                   onClick={() => applyPreset(p.id)}
                 >
                   {p.label}
                 </button>
               ))}
             </div>
+            <p className="lfg-form-hint muted">What are you running?</p>
             <div className="vl-segment vl-segment--wrap" role="group" aria-label="Activity">
               {(
                 [
@@ -1037,6 +1149,7 @@ export function LfgPage({
               <input
                 ref={titleInputRef}
                 value={title}
+                placeholder="Short squad title"
                 onChange={(e) => setTitle(e.target.value)}
               />
             </label>
@@ -1051,29 +1164,31 @@ export function LfgPage({
                   onChange={setRelicKey}
                   onSelect={onPickRelic}
                 />
-                <label className="field">
-                  <span>Share</span>
-                  <select
-                    value={shareType}
-                    onChange={(e) => setShareType(e.target.value as typeof shareType)}
-                  >
-                    <option value="radshare">Radshare</option>
-                    <option value="intactshare">Intactshare</option>
-                    <option value="any">Any</option>
-                  </select>
-                </label>
-                <label className="field">
-                  <span>Refinement</span>
-                  <select value={refinement} onChange={(e) => setRefinement(e.target.value)}>
-                    <option value="radiant">Radiant</option>
-                    <option value="flawless">Flawless</option>
-                    <option value="exceptional">Exceptional</option>
-                    <option value="intact">Intact</option>
-                  </select>
-                </label>
+                <div className="lfg-inline-fields">
+                  <label className="field" style={{ margin: 0, flex: 1 }}>
+                    <span>Share</span>
+                    <select
+                      value={shareType}
+                      onChange={(e) => setShareType(e.target.value as typeof shareType)}
+                    >
+                      <option value="radshare">Radshare</option>
+                      <option value="intactshare">Intactshare</option>
+                      <option value="any">Any</option>
+                    </select>
+                  </label>
+                  <label className="field" style={{ margin: 0, flex: 1 }}>
+                    <span>Refinement</span>
+                    <select value={refinement} onChange={(e) => setRefinement(e.target.value)}>
+                      <option value="radiant">Radiant</option>
+                      <option value="flawless">Flawless</option>
+                      <option value="exceptional">Exceptional</option>
+                      <option value="intact">Intact</option>
+                    </select>
+                  </label>
+                </div>
               </>
             ) : null}
-            <label className="field" style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            <label className="field lfg-steel-row">
               <input
                 type="checkbox"
                 checked={steelPath}
@@ -1085,19 +1200,19 @@ export function LfgPage({
               label="Mission / node"
               value={missionHint}
               options={missionOptions}
-              placeholder="Search fissures, sortie, arbitration…"
-              emptyHint="No live matches — type a custom mission"
+              placeholder="Profit Taker, Index, live fissures…"
+              emptyHint="Type a custom mission, or pick a suggestion"
               onChange={setMissionHint}
               onSelect={onPickMission}
             />
             {quickFissures.length ? (
               <div className="lfg-fissure-chips" aria-label="Quick fissure picks">
+                <span className="lfg-chip-label muted">Live fissures</span>
                 {quickFissures.map((f) => (
                   <button
                     key={f.id}
                     type="button"
-                    className="btn ghost"
-                    style={{ fontSize: '0.72rem', padding: '4px 8px' }}
+                    className="btn ghost lfg-preset-chip"
                     onClick={() => applyFissure(f)}
                   >
                     {f.tier} {f.node}
@@ -1107,10 +1222,15 @@ export function LfgPage({
               </div>
             ) : null}
             <label className="field">
-              <span>Notes</span>
-              <input value={notes} maxLength={160} onChange={(e) => setNotes(e.target.value)} />
+              <span>Notes (optional)</span>
+              <input
+                value={notes}
+                maxLength={160}
+                placeholder="MR, frame prefs, etc."
+                onChange={(e) => setNotes(e.target.value)}
+              />
             </label>
-            <div className="market-create-row">
+            <div className="market-create-row lfg-inline-fields">
               <label className="field" style={{ margin: 0, flex: 1 }}>
                 <span>Slots</span>
                 <input
@@ -1143,11 +1263,15 @@ export function LfgPage({
             <button
               className="btn primary"
               type="button"
-              disabled={busyId === 'create'}
+              disabled={busyId === 'create' || !settings.lfgIgn.trim()}
               onClick={() => void create()}
               style={{ width: '100%', marginTop: 8 }}
             >
-              {busyId === 'create' ? 'Posting…' : 'Post squad'}
+              {busyId === 'create'
+                ? 'Posting…'
+                : !settings.lfgIgn.trim()
+                  ? 'Set your IGN to post'
+                  : 'Post squad'}
             </button>
           </Panel>
         </aside>
@@ -1155,7 +1279,7 @@ export function LfgPage({
         <section className="lfg-main">
           <Panel
             title="Open queues"
-            subtitle="Join copies a /w whisper to the host"
+            subtitle="Join copies a whisper — roster updates live with Discord joins too"
             actions={
               <button
                 className="btn ghost"

@@ -119,7 +119,43 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  align-items: center;
   margin: 0 0 8px;
+}
+
+.lfg-preset-chip {
+  font-size: 0.72rem !important;
+  padding: 4px 10px !important;
+  border-radius: 999px !important;
+}
+
+.lfg-chip-label {
+  font-size: 0.7rem;
+  width: 100%;
+  margin: 2px 0 0;
+}
+
+.lfg-form-hint {
+  margin: 4px 0 0;
+  font-size: 0.75rem;
+}
+
+.lfg-profile-compact,
+.lfg-inline-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.lfg-steel-row {
+  flex-direction: row !important;
+  gap: 8px;
+  align-items: center;
+}
+
+.lfg-search-select__option--custom .lfg-search-select__label {
+  color: var(--vl-teal-bright, #5fd0c5);
 }
 
 .lfg-whisper-preview {

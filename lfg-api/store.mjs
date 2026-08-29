@@ -27,6 +27,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
  * @property {(guildId: string) => any | null} getDiscordGuild
  * @property {(row: { guildId: string, channelId: string, webhookUrl?: string | null, configuredBy?: string | null }) => void} upsertDiscordGuild
  * @property {(guildId: string) => void} removeDiscordGuild
+ * @property {(discordUserId: string) => string | null} getDiscordUserIgn
+ * @property {(discordUserId: string, ign: string) => void} setDiscordUserIgn
+ * @property {(discordUserId: string) => void} clearDiscordUserIgn
  * @property {() => void} [close]
  */
 
@@ -99,6 +102,8 @@ function createJsonStore(filePath) {
   const listings = new Map()
   /** @type {Map<string, any>} */
   const discordGuilds = new Map()
+  /** @type {Map<string, string>} */
+  const discordUserIgns = new Map()
 
   function load() {
     try {
@@ -121,6 +126,15 @@ function createJsonStore(filePath) {
           })
         }
       }
+      const igns =
+        raw?.discordUserIgns && typeof raw.discordUserIgns === 'object'
+          ? raw.discordUserIgns
+          : {}
+      for (const [uid, ign] of Object.entries(igns)) {
+        if (typeof ign === 'string' && ign.trim()) {
+          discordUserIgns.set(uid, ign.trim().slice(0, 24))
+        }
+      }
     } catch {
       // ignore corrupt
     }
@@ -135,6 +149,7 @@ function createJsonStore(filePath) {
         discordGuilds: Object.fromEntries(
           [...discordGuilds.entries()].map(([id, g]) => [id, g]),
         ),
+        discordUserIgns: Object.fromEntries([...discordUserIgns.entries()]),
       },
       null,
       0,
@@ -198,6 +213,16 @@ function createJsonStore(filePath) {
     },
     removeDiscordGuild(guildId) {
       if (discordGuilds.delete(guildId)) save()
+    },
+    getDiscordUserIgn(discordUserId) {
+      return discordUserIgns.get(discordUserId) || null
+    },
+    setDiscordUserIgn(discordUserId, ign) {
+      discordUserIgns.set(discordUserId, String(ign).trim().slice(0, 24))
+      save()
+    },
+    clearDiscordUserIgn(discordUserId) {
+      if (discordUserIgns.delete(discordUserId)) save()
     },
   }
 }
@@ -284,6 +309,11 @@ const SCHEMA_SQL = `
     configured_by TEXT,
     configured_at TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS discord_user_profiles (
+    discord_user_id TEXT PRIMARY KEY,
+    ign TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
   CREATE INDEX IF NOT EXISTS idx_listings_expires ON listings(expires_at);
   CREATE INDEX IF NOT EXISTS idx_listings_created ON listings(created_at);
 `
@@ -324,6 +354,13 @@ function openNodeSqlite(dbPath, DatabaseSync) {
       webhook_url TEXT,
       configured_by TEXT,
       configured_at TEXT NOT NULL
+    );
+  `)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS discord_user_profiles (
+      discord_user_id TEXT PRIMARY KEY,
+      ign TEXT NOT NULL,
+      updated_at TEXT NOT NULL
     );
   `)
 
@@ -465,6 +502,32 @@ function openNodeSqlite(dbPath, DatabaseSync) {
     },
     removeDiscordGuild(guildId) {
       run(`DELETE FROM discord_guild_settings WHERE guild_id = $id`, { id: guildId })
+    },
+    getDiscordUserIgn(discordUserId) {
+      const r = getOne(
+        `SELECT ign FROM discord_user_profiles WHERE discord_user_id = $id`,
+        { id: discordUserId },
+      )
+      return r?.ign ? String(r.ign) : null
+    },
+    setDiscordUserIgn(discordUserId, ign) {
+      run(
+        `INSERT INTO discord_user_profiles (discord_user_id, ign, updated_at)
+         VALUES ($id, $ign, $updated_at)
+         ON CONFLICT(discord_user_id) DO UPDATE SET
+           ign = excluded.ign,
+           updated_at = excluded.updated_at`,
+        {
+          id: discordUserId,
+          ign: String(ign).trim().slice(0, 24),
+          updated_at: new Date().toISOString(),
+        },
+      )
+    },
+    clearDiscordUserIgn(discordUserId) {
+      run(`DELETE FROM discord_user_profiles WHERE discord_user_id = $id`, {
+        id: discordUserId,
+      })
     },
     close() {
       db.close()

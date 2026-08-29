@@ -85,7 +85,7 @@ In Everything Warframe → **LFG** → set **Hub URL** to the HTTPS domain (no t
 
 ### Hub bot (recommended)
 
-Posts embeds with live slots/roster and a **Whisper** button (ephemeral `/w` line for copy-paste).
+Posts embeds with live slots/roster and buttons: **Join**, **Leave**, **Whisper**.
 
 1. [Discord Developer Portal](https://discord.com/developers/applications) → **New Application** → **Bot** → copy token.
 2. Enable no privileged intents (Guilds only).
@@ -107,6 +107,14 @@ DISCORD_BOT_TOKEN=your-bot-token
 
 That stores the channel in the hub DB and auto-creates a channel webhook as fallback.  
 Also useful: `/lfg status`, `/lfg clear`.
+
+7. Anyone can save their Warframe name for one-click Join:
+
+```
+/lfg link ign:YourIgn
+```
+
+**Join** on a post uses that IGN (or opens a modal if not linked), updates the hub roster, refreshes the Discord embed, and the companion LFG board shows it on the next poll. **Leave** removes a Discord join (`discord:<userId>`). **Whisper** still returns the `/w` line for in-game invite.
 
 Redeploy after setting the token. Logs should show `Discord bot ready` and slash commands registered. New hub squads fan out to every server that ran `/lfg setup` (plus `DISCORD_CHANNEL_ID` if set).
 
@@ -133,6 +141,7 @@ the app (not sent to the hub). Independent of the hub bot.
 - `listings` — one row per open squad (TTL via `expires_at`)
 - `members` — squad roster (`listing_id` + `client_id`)
 - `discord_guild_settings` — per-server channel from `/lfg setup`
+- `discord_user_profiles` — Discord user → Warframe IGN from `/lfg link`
 
 Old `lfg-data.json` files are imported automatically on first SQLite open, then renamed to `*.migrated`.
 

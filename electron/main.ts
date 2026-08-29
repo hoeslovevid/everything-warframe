@@ -156,6 +156,7 @@ import {
   MODULE_TOGGLE_HOTKEY_TO_ID,
   OVERLAY_MODULE_IDS,
   RelicPlannerQuery,
+  OcrWarmupStatus,
   WORLDSTATE_MODULE_IDS,
   WorldstateSnapshot,
 } from '../shared/types'
@@ -404,6 +405,66 @@ function broadcastDisplayRemount(prompt: {
 }) {
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send('display:remount', prompt)
+  }
+}
+
+let ocrWarmupStatus: OcrWarmupStatus = {
+  phase: 'idle',
+  detail: '…',
+  updatedAt: new Date(0).toISOString(),
+}
+
+function broadcastOcrWarmup() {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send('ocr:warmup', ocrWarmupStatus)
+  }
+}
+
+function setOcrWarmup(phase: OcrWarmupStatus['phase'], detail: string) {
+  ocrWarmupStatus = {
+    phase,
+    detail,
+    updatedAt: new Date().toISOString(),
+  }
+  broadcastOcrWarmup()
+}
+
+function getOcrWarmupStatus(): OcrWarmupStatus {
+  return ocrWarmupStatus
+}
+
+/** Load Tesseract (+ optional screen capture) and publish status for the UI. */
+async function runOcrWarmup(opts?: { capture?: boolean }): Promise<void> {
+  const settings = loadSettings()
+  const wantRelics = settings.modules.relics
+  const wantRivens = settings.modules.rivens
+  if (!wantRelics && !wantRivens) {
+    setOcrWarmup('skipped', 'Relics/Rivens off')
+    return
+  }
+
+  setOcrWarmup('warming', 'OCR engines…')
+  console.info('[Everything Warframe] Warming OCR / catalogs…')
+  try {
+    await Promise.all([
+      wantRelics ? warmupRelicScanner() : Promise.resolve(),
+      wantRivens ? warmupRivenScanner() : Promise.resolve(),
+    ])
+    const doCapture =
+      opts?.capture !== false &&
+      (process.platform !== 'linux' || settings.onboarding.linuxCaptureAck)
+    if (doCapture) {
+      setOcrWarmup('warming', 'Screen capture…')
+      await warmScreenCapture().catch(() => {})
+    }
+    setOcrWarmup('ready', 'ready')
+    console.info('[Everything Warframe] OCR / catalog warmup done')
+  } catch (err) {
+    setOcrWarmup('failed', 'warmup failed')
+    console.warn(
+      '[Everything Warframe] OCR warmup failed',
+      err instanceof Error ? err.message : err,
+    )
   }
 }
 
@@ -1413,25 +1474,13 @@ function registerIpc() {
     }
     syncLogWatcherInterval()
     if (enabled && (id === 'relics' || id === 'rivens')) {
-      void (async () => {
-        try {
-          if (id === 'relics') await warmupRelicScanner()
-          else await warmupRivenScanner()
-          if (process.platform !== 'linux' || loadSettings().onboarding.linuxCaptureAck) {
-            await warmScreenCapture().catch(() => {})
-          }
-        } catch {
-          // quiet
-        }
-      })()
-    }
-    if (
-      enabled &&
-      process.platform === 'linux' &&
+      void runOcrWarmup()
+    } else if (
       (id === 'relics' || id === 'rivens') &&
-      loadSettings().onboarding.linuxCaptureAck
+      !next.modules.relics &&
+      !next.modules.rivens
     ) {
-      void warmScreenCapture()
+      setOcrWarmup('skipped', 'Relics/Rivens off')
     }
     return next
   })
@@ -1613,6 +1662,7 @@ function registerIpc() {
     return browseInventory(query)
   })
   ipcMain.handle('relics:get', () => getRelicScanState())
+  ipcMain.handle('ocr:warmupStatus', () => getOcrWarmupStatus())
   ipcMain.handle('relics:scan', async () => runRelicScan('manual'))
   ipcMain.handle('relics:clear', () => dismissRelicPopup())
   ipcMain.handle('relics:ackCelebration', () => {
@@ -1830,6 +1880,12 @@ app.whenReady().then(async () => {
 
   createCompanionWindow()
   overlayWindow = createOverlayWindow(isDev ? DEV_URL : null)
+  // Surface warmup ASAP so companion/overlay don't flash "idle" on first paint.
+  if (loadSettings().modules.relics || loadSettings().modules.rivens) {
+    setOcrWarmup('warming', 'Starting…')
+  } else {
+    setOcrWarmup('skipped', 'Relics/Rivens off')
+  }
   setOverlayOriginListener((origin: OverlayContentOrigin) => {
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       overlayWindow.webContents.send('overlay:contentOrigin', origin)
@@ -2004,25 +2060,7 @@ app.whenReady().then(async () => {
   // and pauses inventory sync during OCR; it no longer delays OCR warmup.
   if (loadSettings().modules.relics || loadSettings().modules.rivens) {
     setTimeout(() => {
-      void (async () => {
-        const settings = loadSettings()
-        console.info('[Everything Warframe] Warming OCR / catalogs…')
-        try {
-          await Promise.all([
-            settings.modules.relics ? warmupRelicScanner() : Promise.resolve(),
-            settings.modules.rivens ? warmupRivenScanner() : Promise.resolve(),
-          ])
-          if (process.platform !== 'linux' || settings.onboarding.linuxCaptureAck) {
-            await warmScreenCapture().catch(() => {})
-          }
-          console.info('[Everything Warframe] OCR / catalog warmup done')
-        } catch (err) {
-          console.warn(
-            '[Everything Warframe] OCR warmup failed',
-            err instanceof Error ? err.message : err,
-          )
-        }
-      })()
+      void runOcrWarmup()
     }, 500)
   }
 

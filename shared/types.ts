@@ -1920,6 +1920,16 @@ export type RelicScanState = {
   scanMeta: RelicScanMeta | null
 }
 
+/** Startup / module-enable OCR + capture warmup (companion + overlay status). */
+export type OcrWarmupPhase = 'idle' | 'warming' | 'ready' | 'skipped' | 'failed'
+
+export type OcrWarmupStatus = {
+  phase: OcrWarmupPhase
+  /** Short label for chips (e.g. "OCR engines…"). */
+  detail: string
+  updatedAt: string
+}
+
 export type RivenHistoryEntry = {
   id: string
   scannedAt: string
@@ -2049,6 +2059,7 @@ export type VoidLensApi = {
   getInventoryIndex: () => Promise<InventoryIndex>
   browseInventory: (query?: InventoryBrowseQuery) => Promise<InventoryBrowseItem[]>
   getRelicScan: () => Promise<RelicScanState>
+  getOcrWarmupStatus: () => Promise<OcrWarmupStatus>
   scanRelicRewards: () => Promise<RelicScanState>
   clearRelicScan: () => Promise<RelicScanState>
   ackRelicCelebration: () => Promise<RelicScanState>
@@ -2191,6 +2202,7 @@ export type VoidLensApi = {
   onInventoryProgress: (
     cb: (progress: { stage: string; message: string }) => void,
   ) => () => void
+  onOcrWarmupStatus: (cb: (status: OcrWarmupStatus) => void) => () => void
   onRelicScanUpdated: (cb: (state: RelicScanState) => void) => () => void
   onRivenScanUpdated: (cb: (state: RivenScanState) => void) => () => void
   onUpdateStatus: (cb: (status: AppUpdateStatus) => void) => () => void

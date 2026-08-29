@@ -10,6 +10,7 @@ import { OverlayLayoutStage } from '../../components/OverlayLayoutStage'
 import { NowProvider } from '../../hooks/NowContext'
 import { useColorTheme } from '../../hooks/useColorTheme'
 import { useInventory } from '../../hooks/useInventory'
+import { useOcrWarmup } from '../../hooks/useOcrWarmup'
 import { useRelicScan } from '../../hooks/useRelicScan'
 import { useRivenScan } from '../../hooks/useRivenScan'
 import { useSettings, useWorldstate } from '../../hooks/useVoidLens'
@@ -23,6 +24,7 @@ export function OverlayApp() {
   const { settings, ready, updateSettings } = useSettings()
   const { data } = useWorldstate()
   const { status: inventory, progress: inventoryProgress, syncFromGame } = useInventory()
+  const ocrWarmup = useOcrWarmup()
   const { state: relicScan, scan: scanRelics, clear: clearRelics } = useRelicScan()
   const { state: rivenScan, scan: scanRivens, clear: clearRivens } = useRivenScan()
   useColorTheme(settings.colorTheme, settings.customPalette)
@@ -173,6 +175,8 @@ export function OverlayApp() {
     if (rivenScan.active && (rivenScan.current || rivenScan.reroll)) return 'done' as const
     if (relicScan.scanning || rivenScan.scanning) return 'reading' as const
     if (relicScan.error || rivenScan.error) return 'error' as const
+    if (ocrWarmup.phase === 'warming') return 'warming' as const
+    if (ocrWarmup.phase === 'failed') return 'error' as const
     if (inventory.stale && inventory.loaded) return 'stale' as const
     return 'idle' as const
   })()
@@ -181,23 +185,29 @@ export function OverlayApp() {
       ? inventoryProgress && inventoryProgress.length > 28
         ? `Inv · ${inventoryProgress.slice(0, 26)}…`
         : `Inv · ${inventoryProgress || 'syncing'}`
-      : ocrPhase === 'reading'
-        ? relicScan.scanning
-          ? 'OCR · reading relics'
-          : 'OCR · reading rivens'
-        : ocrPhase === 'done'
+      : ocrPhase === 'warming'
+        ? `OCR · ${ocrWarmup.detail || 'warming…'}`
+        : ocrPhase === 'reading'
           ? relicScan.scanning
-            ? 'OCR · relics…'
-            : rivenScan.scanning
-              ? 'OCR · rivens…'
-              : relicScan.active && relicScan.rewards.length
-                ? 'OCR · relic ready'
-                : 'OCR · riven ready'
-          : ocrPhase === 'error'
-            ? 'OCR · failed'
-            : ocrPhase === 'stale'
-              ? 'Inv · stale — sync'
-              : 'OCR · idle'
+            ? 'OCR · reading relics'
+            : 'OCR · reading rivens'
+          : ocrPhase === 'done'
+            ? relicScan.scanning
+              ? 'OCR · relics…'
+              : rivenScan.scanning
+                ? 'OCR · rivens…'
+                : relicScan.active && relicScan.rewards.length
+                  ? 'OCR · relic ready'
+                  : 'OCR · riven ready'
+            : ocrPhase === 'error'
+              ? ocrWarmup.phase === 'failed'
+                ? 'OCR · warmup failed'
+                : 'OCR · failed'
+              : ocrPhase === 'stale'
+                ? 'Inv · stale — sync'
+                : ocrWarmup.phase === 'ready'
+                  ? 'OCR · ready'
+                  : 'OCR · idle'
 
   const density = settings.overlayDensity || 'normal'
   const densityScaleBoost = density === 'readable' ? 1.12 : density === 'compact' ? 0.92 : 1

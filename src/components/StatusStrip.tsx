@@ -1,4 +1,4 @@
-import { AppSettings, InventoryStatus } from '../../shared/types'
+import { AppSettings, InventoryStatus, OcrWarmupStatus } from '../../shared/types'
 import './onboarding.css'
 
 type Props = {
@@ -15,6 +15,8 @@ type Props = {
   onSyncInventory?: () => void
   /** Live staged sync message (helper → launch → waiting → parsing). */
   inventoryProgress?: string | null
+  /** OCR / capture warmup at launch (or after enabling Relics/Rivens). */
+  ocrWarmup?: OcrWarmupStatus | null
 }
 
 type Health = {
@@ -37,6 +39,7 @@ export function StatusStrip({
   onRefreshWorldstate,
   onSyncInventory,
   inventoryProgress,
+  ocrWarmup,
 }: Props) {
   const eeOk = Boolean(settings.eeLogPath)
   const invOk = Boolean(inventory?.loaded)
@@ -47,6 +50,21 @@ export function StatusStrip({
     (invStale || !invOk) &&
     Boolean(inventory?.warframeRunning)
   const overlayOn = settings.overlayVisible
+  const ocrOn = settings.modules.relics || settings.modules.rivens
+  const warming = ocrWarmup?.phase === 'warming'
+  const ocrFailed = ocrWarmup?.phase === 'failed'
+  const ocrReady = ocrWarmup?.phase === 'ready'
+  const ocrDetail = warming
+    ? ocrWarmup?.detail || 'warming…'
+    : ocrFailed
+      ? ocrWarmup?.detail || 'failed'
+      : !ocrOn
+        ? 'off'
+        : ocrReady
+          ? 'ready'
+          : ocrWarmup?.phase === 'skipped'
+            ? 'off'
+            : '…'
 
   const invDetail = inventoryProgress
     ? inventoryProgress.length > 28
@@ -74,6 +92,20 @@ export function StatusStrip({
       state: overlayOn ? 'ok' : 'off',
       onClick: onToggleOverlay,
       title: 'Toggle overlay',
+    },
+    {
+      id: 'ocr',
+      label: 'OCR',
+      detail: ocrDetail.length > 18 ? `${ocrDetail.slice(0, 16)}…` : ocrDetail,
+      state: warming || ocrFailed ? 'warn' : ocrReady && ocrOn ? 'ok' : 'off',
+      onClick: onGoSettings,
+      title: warming
+        ? `Warming up: ${ocrWarmup?.detail || 'OCR'}`
+        : ocrFailed
+          ? 'OCR warmup failed — first scan may be slow'
+          : ocrReady && ocrOn
+            ? 'OCR engines ready'
+            : 'Enable Relics or Rivens to warm OCR',
     },
     {
       id: 'worldstate',

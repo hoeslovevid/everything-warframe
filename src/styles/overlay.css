@@ -191,6 +191,16 @@
   box-shadow: 0 0 0 3px rgba(201, 164, 92, 0.25);
 }
 
+.ocr-status-chip.is-warming .ocr-status-chip__dot {
+  background: #c9a45c;
+  box-shadow: 0 0 0 3px rgba(201, 164, 92, 0.25);
+  animation: ocr-sync-pulse 1.1s ease-in-out infinite;
+}
+
+.ocr-status-chip.is-warming .ocr-status-chip__main {
+  border-color: rgba(201, 164, 92, 0.4);
+}
+
 .ocr-status-chip.is-done .ocr-status-chip__dot {
   background: #6fbf8a;
 }

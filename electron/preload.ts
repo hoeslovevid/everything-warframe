@@ -13,6 +13,7 @@ import type {
   RelicPlannerQuery,
   RelicScanState,
   RivenScanState,
+  OcrWarmupStatus,
   UninstallInfo,
   VoidLensApi,
   WorldstateSnapshot,
@@ -43,6 +44,8 @@ const api: VoidLensApi = {
   getInventoryIndex: () => ipcRenderer.invoke('inventory:index'),
   browseInventory: (query) => ipcRenderer.invoke('inventory:browse', query),
   getRelicScan: () => ipcRenderer.invoke('relics:get'),
+  getOcrWarmupStatus: () =>
+    ipcRenderer.invoke('ocr:warmupStatus') as Promise<OcrWarmupStatus>,
   scanRelicRewards: () => ipcRenderer.invoke('relics:scan'),
   clearRelicScan: () => ipcRenderer.invoke('relics:clear'),
   ackRelicCelebration: () => ipcRenderer.invoke('relics:ackCelebration'),
@@ -162,6 +165,11 @@ const api: VoidLensApi = {
     ) => cb(progress)
     ipcRenderer.on('inventory:progress', listener)
     return () => ipcRenderer.removeListener('inventory:progress', listener)
+  },
+  onOcrWarmupStatus: (cb) => {
+    const listener = (_: Electron.IpcRendererEvent, status: OcrWarmupStatus) => cb(status)
+    ipcRenderer.on('ocr:warmup', listener)
+    return () => ipcRenderer.removeListener('ocr:warmup', listener)
   },
   onRelicScanUpdated: (cb) => {
     const listener = (_: Electron.IpcRendererEvent, state: RelicScanState) => cb(state)

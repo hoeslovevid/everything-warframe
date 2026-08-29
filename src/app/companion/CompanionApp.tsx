@@ -39,6 +39,7 @@ import { HelpPage } from '../../components/HelpPage'
 import { WhatsNew } from '../../components/WhatsNew'
 import { NowProvider } from '../../hooks/NowContext'
 import { useInventory } from '../../hooks/useInventory'
+import { useOcrWarmup } from '../../hooks/useOcrWarmup'
 import { useRelicScan } from '../../hooks/useRelicScan'
 import { useRivenScan } from '../../hooks/useRivenScan'
 import { useSettings, useWorldstate } from '../../hooks/useVoidLens'
@@ -188,6 +189,7 @@ export function CompanionApp() {
   const { settings, ready, updateSettings, setModuleEnabled } = useSettings()
   const { data, loading, error, refresh } = useWorldstate()
   const { status: inventory, progress: inventoryProgress } = useInventory()
+  const ocrWarmup = useOcrWarmup()
   const { state: relicScan, ackCelebration } = useRelicScan()
   const { state: rivenScan } = useRivenScan()
   useColorTheme(settings.colorTheme, settings.customPalette)
@@ -1067,6 +1069,7 @@ export function CompanionApp() {
                   settings={settings}
                   inventory={inventory}
                   inventoryProgress={inventoryProgress}
+                  ocrWarmup={ocrWarmup}
                   worldstateOk={Boolean(data.fetchedAt) && !error}
                   worldstateStale={data.stale}
                   onToggleOverlay={() => void window.voidlens?.toggleOverlay()}

@@ -415,6 +415,9 @@ export const WHATS_NEW: Record<string, string[]> = {
     'Members-only announce: servers can limit posts to hosts linked in that Discord',
     'Personal Discord webhook in LFG Advanced settings; richer mission suggestions',
   ],
+  '0.9.89': [
+    'OCR warmup status on launch: companion status chip + overlay chip while engines heat up',
+  ],
 }
 
 export function getWhatsNewBullets(version: string): string[] {

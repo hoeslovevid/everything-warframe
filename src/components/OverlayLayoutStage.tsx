@@ -20,6 +20,7 @@ import { InvasionsPanel } from '../modules/invasions/InvasionsPanel'
 import { ArchonPanel } from '../modules/archon/ArchonPanel'
 import { DeepArchimedeaPanel } from '../modules/deepArchimedea/DeepArchimedeaPanel'
 import { RivenPanel } from '../modules/rivens/RivenPanel'
+import { LfgMiniPanel } from '../modules/lfg/LfgMiniPanel'
 import { Panel } from './Panel'
 import { OcrScanGuides } from './OcrScanGuides'
 import '../styles/overlay.css'
@@ -368,6 +369,8 @@ export function OverlayLayoutStage({
             )
           }
           return <RelicRecommendPanel opacity={op} compact />
+        case 'lfg':
+          return <LfgMiniPanel opacity={op} />
         default:
           return null
       }

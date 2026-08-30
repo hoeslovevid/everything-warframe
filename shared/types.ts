@@ -14,6 +14,7 @@ export type ModuleId =
   | 'relicPlanner'
   | 'relicRecommend'
   | 'mastery'
+  | 'lfg'
 
 /** Soft UI chime style for relic / riven scan alerts. */
 export type SoundPackId = 'soft' | 'bright' | 'double' | 'low'
@@ -342,6 +343,7 @@ export const OVERLAY_MODULE_IDS: ModuleId[] = [
   'deepArchimedea',
   'rivens',
   'relicRecommend',
+  'lfg',
 ]
 
 /** Persistent worldstate panels (excludes transient relic/riven popups). */
@@ -537,6 +539,8 @@ export type AppSettings = {
   lfgDiscordNotifyOnCreate: boolean
   /** Discord message ids for live personal-webhook updates (listing id → message id). */
   lfgDiscordMessageIds: Record<string, string>
+  /** Opt-in: include anonymous hub metrics on the status page (default off). */
+  lfgHubMetricsOptIn?: boolean
   /** Serve localhost HTML widgets for OBS / external overlays. */
   widgetServerEnabled: boolean
   /** Port for the widget HTTP server (127.0.0.1 only). */
@@ -727,6 +731,11 @@ export const MODULE_META: Record<
       'Next craftable / owned-unmastered gear for MR progress — companion-only',
     phase: 2,
   },
+  lfg: {
+    label: 'LFG',
+    description: 'Compact overlay board: open seats and quick post / open companion',
+    phase: 3,
+  },
 }
 
 /** Official hosted LFG board (Railway). Override with another URL, or `local` for a private hub. */
@@ -750,6 +759,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     relicPlanner: true,
     relicRecommend: true,
     mastery: true,
+    lfg: false,
   },
   panelAnchors: {
     cycles: { x: 24, y: 24 },
@@ -764,6 +774,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     /** Above Kuva Cycle compare cards on 1920×1080; Layout reset scales per display. */
     rivens: { x: 720, y: 8 },
     relicRecommend: { x: 24, y: 420 },
+    lfg: { x: 420, y: 24 },
   },
   opacity: 0.92,
   moduleOpacity: {
@@ -778,6 +789,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     deepArchimedea: 0.92,
     rivens: 0.92,
     relicRecommend: 0.92,
+    lfg: 0.92,
   },
   overlayScale: 1,
   overlayDensity: 'normal',
@@ -855,6 +867,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   lfgDiscordWebhookUrl: '',
   lfgDiscordNotifyOnCreate: false,
   lfgDiscordMessageIds: {},
+  lfgHubMetricsOptIn: false,
   widgetServerEnabled: false,
   widgetServerPort: 17862,
   quietMode: false,
@@ -1573,6 +1586,9 @@ export type LfgListing = {
   slotsOpen: number
   whisper: string
   inviteHint: string
+  /** host = hosting a squad; seek = looking for a host */
+  intent?: 'host' | 'seek'
+  voiceChannelUrl?: string | null
 }
 
 export type LfgCreateInput = {
@@ -1591,6 +1607,17 @@ export type LfgCreateInput = {
   missionHint?: string | null
   slotsTotal?: number
   ttlMs?: number
+  intent?: 'host' | 'seek'
+  voiceChannelUrl?: string | null
+}
+
+export type LfgDiscordAnnounceResult = {
+  posted: number
+  filteredOut: boolean
+  skips: Array<{ guildId: string | null; channelId: string; reason: string }>
+  targetCount: number
+  via: string
+  timedOut?: boolean
 }
 
 export type LfgListResult = {
@@ -2098,11 +2125,24 @@ export type VoidLensApi = {
   suggestMarketUndercut: (name: string) => Promise<MarketUndercutSuggestion | null>
   getMarketPriceHistory: (name: string) => Promise<MarketPriceHistory>
   getEconomyTrend: () => Promise<EconomyTrendResult>
-  lfgHealth: () => Promise<{ ok: boolean; listings?: number; error?: string; baseUrl: string }>
+  lfgHealth: () => Promise<{
+    ok: boolean
+    listings?: number
+    error?: string
+    warning?: string
+    baseUrl: string
+    discord?: {
+      botReady: boolean
+      guildCount: number
+      membersOnlyGuilds: number
+      announceTargets: number
+    }
+  }>
   listLfg: (opts?: {
     region?: string
     platform?: string
     activity?: string
+    intent?: string
     q?: string
   }) => Promise<LfgListResult>
   /** Lightweight relic names for LFG typeahead (cached; no planner enrichment). */
@@ -2111,7 +2151,14 @@ export type VoidLensApi = {
   >
   createLfg: (
     input: LfgCreateInput,
-  ) => Promise<{ ok: boolean; listing?: LfgListing; hostToken?: string; error?: string }>
+  ) => Promise<{
+    ok: boolean
+    listing?: LfgListing
+    hostToken?: string
+    error?: string
+    warning?: string
+    discord?: LfgDiscordAnnounceResult
+  }>
   joinLfg: (input: { id: string; ign: string; clientId: string }) => Promise<LfgJoinResult>
   leaveLfg: (input: { id: string; clientId: string }) => Promise<{ ok: boolean; error?: string }>
   deleteLfg: (input: { id: string; hostToken: string }) => Promise<{ ok: boolean; error?: string }>
@@ -2120,6 +2167,13 @@ export type VoidLensApi = {
     hostToken: string
     addMs?: number
   }) => Promise<{ ok: boolean; listing?: LfgListing; error?: string }>
+  reportLfg: (input: {
+    id: string
+    clientId: string
+    reason?: string
+  }) => Promise<{ ok: boolean; reportCount?: number; hidden?: boolean; error?: string }>
+  /** Live hub events (SSE). Returns unsubscribe. */
+  onLfgEvent: (cb: (event: { type?: string; id?: string; at?: string }) => void) => () => void
   /** OS notification (used for LFG join alerts, etc.). */
   desktopNotify: (payload: { title: string; body?: string }) => Promise<boolean>
   getMasteryHelper: (query?: MasteryHelperQuery) => Promise<MasteryHelperResult>

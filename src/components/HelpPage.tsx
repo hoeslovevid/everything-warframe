@@ -271,6 +271,14 @@ export function HelpPage({
                 rel="noreferrer"
               >
                 Add to your server
+              </a>
+              {' · '}
+              <a
+                href="https://hoeslovevid.github.io/Warframe-Companion-Helper/lfg-discord.html"
+                target="_blank"
+                rel="noreferrer"
+              >
+                setup guide
               </a>{' '}
               (then <code>/lfg setup</code>)
             </li>

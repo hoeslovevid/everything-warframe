@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LFG hub status · Everything Warframe</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .hub-status {
+        max-width: 720px;
+        margin: 2rem auto;
+        padding: 0 1.25rem 3rem;
+      }
+      .hub-status h1 {
+        font-size: 1.75rem;
+        margin-bottom: 0.35rem;
+      }
+      .hub-status .muted {
+        opacity: 0.75;
+        margin-bottom: 1.5rem;
+      }
+      .hub-grid {
+        display: grid;
+        gap: 0.75rem;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        margin: 1.25rem 0;
+      }
+      .hub-stat {
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        padding: 0.9rem 1rem;
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.25);
+      }
+      .hub-stat__label {
+        display: block;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        opacity: 0.7;
+        margin-bottom: 0.35rem;
+      }
+      .hub-stat__value {
+        font-size: 1.35rem;
+        font-weight: 600;
+      }
+      .hub-err {
+        color: #f0a0a0;
+        margin: 1rem 0;
+      }
+      .hub-raw {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.8rem;
+        white-space: pre-wrap;
+        word-break: break-word;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 1rem;
+        border-radius: 8px;
+        max-height: 420px;
+        overflow: auto;
+        background: rgba(0, 0, 0, 0.35);
+      }
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header__inner">
+        <a class="brand" href="index.html">Everything Warframe</a>
+        <nav class="site-nav">
+          <a href="index.html">Home</a>
+          <a href="lfg-discord.html">LFG Discord</a>
+          <a href="hub-status.html" aria-current="page">Hub status</a>
+        </nav>
+      </div>
+    </header>
+    <main class="hub-status">
+      <h1>LFG hub status</h1>
+      <p class="muted">
+        Live metrics from the community LFG API. Refreshes every 15 seconds.
+      </p>
+      <p id="hub-source" class="muted"></p>
+      <div id="hub-error" class="hub-err" hidden></div>
+      <div class="hub-grid" id="hub-grid">
+        <div class="hub-stat">
+          <span class="hub-stat__label">Listings</span>
+          <span class="hub-stat__value" id="m-listings">—</span>
+        </div>
+        <div class="hub-stat">
+          <span class="hub-stat__label">Discord bot</span>
+          <span class="hub-stat__value" id="m-bot">—</span>
+        </div>
+        <div class="hub-stat">
+          <span class="hub-stat__label">Updated</span>
+          <span class="hub-stat__value" id="m-updated" style="font-size:1rem">—</span>
+        </div>
+      </div>
+      <h2>Raw metrics</h2>
+      <pre class="hub-raw" id="hub-raw">Loading…</pre>
+    </main>
+    <script>
+      const DEFAULT_BASE = 'https://everything-warframe-production.up.railway.app'
+      const params = new URLSearchParams(location.search)
+      const base = (params.get('base') || DEFAULT_BASE).replace(/\/+$/, '')
+      document.getElementById('hub-source').textContent = 'Source: ' + base + '/metrics'
+
+      async function tick() {
+        const errEl = document.getElementById('hub-error')
+        const rawEl = document.getElementById('hub-raw')
+        try {
+          const res = await fetch(base + '/metrics', { cache: 'no-store' })
+          if (!res.ok) throw new Error('HTTP ' + res.status)
+          const data = await res.json()
+          errEl.hidden = true
+          const listings =
+            data.listings ??
+            data.listingCount ??
+            data.openListings ??
+            (Array.isArray(data.items) ? data.items.length : null)
+          const bot =
+            data.discordBotReady ??
+            data.botReady ??
+            data.discord?.botReady ??
+            data.bot?.ready
+          document.getElementById('m-listings').textContent =
+            listings == null ? '—' : String(listings)
+          document.getElementById('m-bot').textContent =
+            bot == null ? '—' : bot ? 'Ready' : 'Down'
+          document.getElementById('m-updated').textContent = new Date().toLocaleTimeString()
+          rawEl.textContent = JSON.stringify(data, null, 2)
+        } catch (e) {
+          errEl.hidden = false
+          errEl.textContent =
+            'Could not load metrics: ' + (e && e.message ? e.message : String(e))
+          rawEl.textContent = '—'
+        }
+      }
+      tick()
+      setInterval(tick, 15000)
+    </script>
+  </body>
+</html>

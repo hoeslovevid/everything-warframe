@@ -1747,6 +1747,10 @@ function registerIpc() {
     const { extendLfg } = await import('./services/lfg-hub')
     return extendLfg(input || {})
   })
+  ipcMain.handle('lfg:report', async (_e, input) => {
+    const { reportLfg } = await import('./services/lfg-hub')
+    return reportLfg(input || {})
+  })
   ipcMain.handle('ui:desktopNotify', async (_e, payload) => {
     const title = String(payload?.title || '').trim().slice(0, 80)
     const body = String(payload?.body || '').trim().slice(0, 200)

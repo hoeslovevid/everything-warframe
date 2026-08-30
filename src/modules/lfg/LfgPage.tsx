@@ -11,13 +11,70 @@ import './lfg.css'
 import { LfgSearchSelect, type LfgSearchOption } from './LfgSearchSelect'
 import { catalogMissionOptions } from './lfgMissionCatalog'
 
+const DISCORD_BOT_INVITE =
+  'https://discord.com/oauth2/authorize?client_id=1543118817654476840&permissions=536955880&scope=bot%20applications.commands'
+const LFG_DISCORD_GUIDE =
+  'https://hoeslovevid.github.io/Warframe-Companion-Helper/lfg-discord.html'
+
 type ActivityId = 'relic' | 'fissure' | 'farm' | 'boss' | 'custom'
 
+type HubDiscordStatus = {
+  botReady: boolean
+  guildCount: number
+  membersOnlyGuilds: number
+  announceTargets: number
+}
+
+function discordSkipHint(skips: Array<{ reason: string }>): string | null {
+  if (!skips.length) return null
+  const reasons = skips.map((s) => String(s.reason || ''))
+  if (reasons.some((r) => r.includes('members_only_no_link'))) {
+    return 'Discord skipped members-only servers — run /lfg link with your IGN in Discord'
+  }
+  if (reasons.some((r) => r.includes('members_only_not_in_guild'))) {
+    return 'Discord skipped members-only servers — join that Discord or link a matching IGN'
+  }
+  if (reasons.some((r) => r.includes('activity_filter'))) {
+    return 'Discord skipped some servers — activity not on their allowlist'
+  }
+  if (reasons.some((r) => r.includes('region_filter'))) {
+    return 'Discord skipped some servers — region not on their allowlist'
+  }
+  if (reasons.some((r) => r.includes('platform_filter'))) {
+    return 'Discord skipped some servers — platform not on their allowlist'
+  }
+  return 'Discord skipped some configured servers'
+}
+
+function formatDiscordAnnounce(discord: {
+  posted: number
+  filteredOut: boolean
+  skips: Array<{ reason: string }>
+  targetCount: number
+  via: string
+  timedOut?: boolean
+}): string {
+  if (discord.timedOut) return 'Squad posted · Discord announce still running'
+  if (discord.posted > 0) {
+    const n = discord.posted
+    return `Squad posted · Discord ${n === 1 ? '1 channel' : `${n} channels`}`
+  }
+  if (discord.filteredOut || discord.skips.length) {
+    return discordSkipHint(discord.skips) || 'Squad posted · Discord filtered this announce'
+  }
+  if (discord.targetCount === 0 && discord.via === 'none') {
+    return 'Squad posted · no Discord channels configured yet'
+  }
+  return 'Squad posted · whisper copied'
+}
+
 export type LfgPrefill = {
-  relicKey: string
+  relicKey?: string
   title?: string
   shareType?: 'radshare' | 'intactshare' | 'any'
   activity?: ActivityId
+  missionHint?: string
+  steelPath?: boolean
 }
 
 type Props = {
@@ -200,8 +257,10 @@ export function LfgPage({
   const [listings, setListings] = useState<LfgListing[]>([])
   const [baseUrl, setBaseUrl] = useState('')
   const [hubOk, setHubOk] = useState(false)
+  const [hubDiscord, setHubDiscord] = useState<HubDiscordStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const toastTimerRef = useRef<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
@@ -212,11 +271,14 @@ export function LfgPage({
   const [openSeatsOnly, setOpenSeatsOnly] = useState(true)
 
   const [filterActivity, setFilterActivity] = useState('all')
+  const [filterIntent, setFilterIntent] = useState<'all' | 'host' | 'seek'>('all')
   const [filterRegion, setFilterRegion] = useState<string>(() => settings.lfgRegion || 'all')
   const [filterPlatform, setFilterPlatform] = useState<string>(() => settings.lfgPlatform || 'all')
   const [qInput, setQInput] = useState('')
   const [qDebounced, setQDebounced] = useState('')
 
+  const [intent, setIntent] = useState<'host' | 'seek'>('host')
+  const [voiceChannelUrl, setVoiceChannelUrl] = useState('')
   const [activity, setActivity] = useState<ActivityId>('relic')
   const [title, setTitle] = useState('Radshare')
   const [relicKey, setRelicKey] = useState('')
@@ -229,13 +291,15 @@ export function LfgPage({
   const [ttlMin, setTtlMin] = useState(15)
   const [relicOptions, setRelicOptions] = useState<LfgSearchOption[]>([])
   const [relicsLoading, setRelicsLoading] = useState(false)
+  const [sseLive, setSseLive] = useState(false)
 
   const clientId = settings.lfgClientId?.trim() || ''
   const hostTokens = settings.lfgHostTokens || {}
 
-  const showToast = useCallback((msg: string) => {
+  const showToast = useCallback((msg: string, ms = 2200) => {
     setToast(msg)
-    window.setTimeout(() => setToast(null), 2200)
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = window.setTimeout(() => setToast(null), ms)
   }, [])
 
   const ownedRelicKeys = useMemo(() => {
@@ -274,13 +338,29 @@ export function LfgPage({
   }, [qInput])
 
   useEffect(() => {
-    if (!prefill?.relicKey) return
-    setActivity(prefill.activity || 'relic')
-    setRelicKey(prefill.relicKey)
-    setShareType(prefill.shareType || 'radshare')
-    setRefinement('radiant')
-    setTitle(prefill.title?.trim() || `${prefill.relicKey} radshare`)
-    setSteelPath(false)
+    if (!prefill) return
+    if (
+      !prefill.relicKey &&
+      !prefill.missionHint &&
+      !prefill.title &&
+      !prefill.activity
+    ) {
+      return
+    }
+    if (prefill.activity) setActivity(prefill.activity)
+    else if (prefill.relicKey) setActivity('relic')
+    else if (prefill.missionHint) setActivity('fissure')
+    if (prefill.relicKey) {
+      setRelicKey(prefill.relicKey)
+      setShareType(prefill.shareType || 'radshare')
+      setRefinement('radiant')
+    }
+    if (prefill.missionHint != null) setMissionHint(prefill.missionHint)
+    if (prefill.steelPath != null) setSteelPath(prefill.steelPath)
+    setTitle(
+      prefill.title?.trim() ||
+        (prefill.relicKey ? `${prefill.relicKey} radshare` : prefill.missionHint || 'LFG'),
+    )
     onPrefillConsumed?.()
     window.setTimeout(() => {
       titleInputRef.current?.focus()
@@ -456,11 +536,15 @@ export function LfgPage({
         if (!before) continue
         const newcomers = igns.filter((ign) => !before.includes(ign))
         for (const ign of newcomers) {
-          const msg = `${ign} joined “${l.title}”`
-          showToast(msg)
+          const member = l.members.find((m) => m.ign === ign)
+          const fromDiscord = Boolean(member?.clientId?.startsWith('discord:'))
+          const msg = fromDiscord
+            ? `${ign} joined “${l.title}” via Discord`
+            : `${ign} joined “${l.title}”`
+          showToast(msg, 4000)
           pushToast(msg, 'ok', 5000)
           void window.voidlens?.desktopNotify?.({
-            title: 'LFG — squad join',
+            title: fromDiscord ? 'LFG — Discord join' : 'LFG — squad join',
             body: msg,
           })
         }
@@ -493,42 +577,61 @@ export function LfgPage({
     if (!window.voidlens?.listLfg) return false
     setLoading(true)
     try {
-      const res = await window.voidlens.listLfg({
-        region: filterRegion,
-        activity: filterActivity,
-        q: qDebounced || undefined,
-        platform: filterPlatform === 'all' ? undefined : filterPlatform,
-      })
+      const [res, health] = await Promise.all([
+        window.voidlens.listLfg({
+          region: filterRegion,
+          activity: filterActivity,
+          intent: filterIntent === 'all' ? undefined : filterIntent,
+          q: qDebounced || undefined,
+          platform: filterPlatform === 'all' ? undefined : filterPlatform,
+        }),
+        window.voidlens.lfgHealth?.().catch(() => null) ?? Promise.resolve(null),
+      ])
       setListings(res.listings)
       detectJoins(res.listings)
       setBaseUrl(res.baseUrl)
       setHubOk(!res.error)
+      if (health?.ok && health.discord) setHubDiscord(health.discord)
+      else if (health && !health.ok) setHubDiscord(null)
       if (res.error) {
         setError(res.error)
-        return /rate|429/i.test(res.error)
+        return /rate|429|Railway/i.test(res.error)
       }
       setError(res.warning || null)
-      return Boolean(res.warning && /rate|429|Railway edge/i.test(res.warning))
+      return Boolean(res.warning && /rate|429|Railway|local board/i.test(res.warning))
     } catch (err) {
       setHubOk(false)
+      setHubDiscord(null)
       const msg = err instanceof Error ? err.message : 'LFG failed'
       setError(msg)
-      return /rate|429/i.test(msg)
+      return /rate|429|Railway/i.test(msg)
     } finally {
       setLoading(false)
     }
-  }, [filterActivity, filterRegion, filterPlatform, qDebounced, detectJoins])
+  }, [filterActivity, filterIntent, filterRegion, filterPlatform, qDebounced, detectJoins])
+
+  useEffect(() => {
+    if (!active) return
+    const unsub = window.voidlens?.onLfgEvent?.(() => {
+      setSseLive(true)
+      void refresh()
+    })
+    return () => {
+      unsub?.()
+    }
+  }, [active, refresh])
 
   useEffect(() => {
     if (!active) return
     let cancelled = false
     let timer: number | undefined
-    let delay = 20_000
+    let delay = sseLive ? 60_000 : 20_000
 
     const tick = async () => {
       if (cancelled) return
       const rateLimited = await refresh()
-      delay = rateLimited ? Math.min(90_000, Math.round(delay * 1.6)) : 20_000
+      const base = sseLive ? 60_000 : 20_000
+      delay = rateLimited ? Math.min(90_000, Math.round(delay * 1.6)) : base
       if (!cancelled) timer = window.setTimeout(() => void tick(), delay)
     }
 
@@ -537,7 +640,7 @@ export function LfgPage({
       cancelled = true
       if (timer) window.clearTimeout(timer)
     }
-  }, [refresh, active])
+  }, [refresh, active, sseLive])
 
   const saveProfile = (partial: Partial<AppSettings>) => onUpdate(partial)
 
@@ -550,6 +653,7 @@ export function LfgPage({
     setFilterRegion('all')
     setFilterPlatform('all')
     setFilterActivity('all')
+    setFilterIntent('all')
     setOpenSeatsOnly(false)
     setQInput('')
   }
@@ -599,6 +703,8 @@ export function LfgPage({
         missionHint: missionHint.trim() || null,
         slotsTotal,
         ttlMs: ttlMin * 60_000,
+        intent,
+        voiceChannelUrl: voiceChannelUrl.trim() || null,
       })
       if (!res.ok || !res.listing) {
         setError(res.error || 'Create failed')
@@ -617,7 +723,14 @@ export function LfgPage({
         setCopied(res.listing.id)
         window.setTimeout(() => setCopied(null), 1600)
       }
-      showToast('Squad posted · whisper copied')
+      const discordMsg = res.discord
+        ? formatDiscordAnnounce(res.discord)
+        : 'Squad posted · whisper copied'
+      showToast(discordMsg, 4200)
+      if (res.discord?.filteredOut || (res.discord?.skips?.length ?? 0) > 0) {
+        const hint = discordSkipHint(res.discord?.skips || [])
+        if (hint) setError(hint)
+      }
     } finally {
       setBusyId(null)
     }
@@ -739,6 +852,31 @@ export function LfgPage({
     }
   }
 
+  const reportListing = async (listing: LfgListing) => {
+    if (!window.voidlens?.reportLfg) return
+    if (!clientId) {
+      setError('Missing client id - reopen the LFG tab')
+      return
+    }
+    const reason = window.prompt('Why report this listing? (optional)') ?? ''
+    setBusyId(`report-${listing.id}`)
+    try {
+      const res = await window.voidlens.reportLfg({
+        id: listing.id,
+        clientId,
+        reason: reason.trim() || undefined,
+      })
+      if (!res.ok) {
+        setError(res.error || 'Report failed')
+        return
+      }
+      showToast(res.hidden ? 'Listing hidden after reports' : 'Report submitted')
+      await refresh()
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   const renderCardActions = (l: LfgListing) => {
     const isHost = Boolean(hostTokens[l.id])
     const inSquad = l.members.some((m) => m.clientId === clientId)
@@ -815,7 +953,17 @@ export function LfgPage({
               Close
             </button>
           </>
-        ) : null}
+        ) : (
+          <button
+            className="btn ghost"
+            type="button"
+            disabled={busyId === `report-${l.id}`}
+            title="Report this listing"
+            onClick={() => void reportListing(l)}
+          >
+            {busyId === `report-${l.id}` ? '…' : 'Report'}
+          </button>
+        )}
       </div>
     )
   }
@@ -883,6 +1031,11 @@ export function LfgPage({
             {hubMode === 'local' ? 'Local' : 'Community'}
             {' · '}
             {hubOk ? 'OK' : 'Offline'}
+            {hubOk && hubDiscord
+              ? hubDiscord.botReady
+                ? ` · Discord ${hubDiscord.announceTargets || hubDiscord.guildCount}`
+                : ' · Discord off'
+              : null}
           </span>
         </p>
       </header>
@@ -1064,6 +1217,12 @@ export function LfgPage({
                 </label>
               </>
             ) : null}
+            {settings.lfgIgn.trim() ? (
+              <p className="muted lfg-discord-link-hint">
+                Same IGN in Discord? Run <code>/lfg link ign:{settings.lfgIgn.trim()}</code> so Join
+                and members-only announces match you.
+              </p>
+            ) : null}
             <button
               type="button"
               className="btn ghost lfg-advanced-toggle"
@@ -1073,6 +1232,61 @@ export function LfgPage({
             </button>
             {hubAdvanced ? (
               <div className="lfg-advanced">
+                <div className="lfg-discord-checklist">
+                  <p className="lfg-discord-checklist__title">Discord hub checklist</p>
+                  <ol>
+                    <li>
+                      <button
+                        type="button"
+                        className="linkish"
+                        onClick={() => void window.voidlens?.openExternal?.(DISCORD_BOT_INVITE)}
+                      >
+                        Add the LFG bot
+                      </button>{' '}
+                      to your Discord (Manage Server).
+                    </li>
+                    <li>
+                      Run <code>/lfg setup channel:#your-lfg</code> (optional{' '}
+                      <code>members_only</code> / <code>activities</code>).
+                    </li>
+                    <li>
+                      Hosts: <code>/lfg link ign:YourIgn</code> — then post here; Discord updates
+                      live.
+                    </li>
+                  </ol>
+                  <div className="lfg-discord-checklist__actions">
+                    <button
+                      type="button"
+                      className="btn ghost"
+                      onClick={() =>
+                        void copyText(DISCORD_BOT_INVITE).then((ok) => {
+                          if (ok) showToast('Discord invite copied')
+                        })
+                      }
+                    >
+                      Copy bot invite
+                    </button>
+                    <button
+                      type="button"
+                      className="btn ghost"
+                      onClick={() => void window.voidlens?.openExternal?.(LFG_DISCORD_GUIDE)}
+                    >
+                      Setup guide
+                    </button>
+                  </div>
+                  {hubDiscord ? (
+                    <p className="muted" style={{ fontSize: '0.75rem', margin: '8px 0 0' }}>
+                      Hub Discord:{' '}
+                      {hubDiscord.botReady
+                        ? `online · ${hubDiscord.announceTargets} announce target${
+                            hubDiscord.announceTargets === 1 ? '' : 's'
+                          } · ${hubDiscord.guildCount} guild${
+                            hubDiscord.guildCount === 1 ? '' : 's'
+                          } configured`
+                        : 'bot offline (webhook fallback may still work)'}
+                    </p>
+                  ) : null}
+                </div>
                 <label className="field">
                   <span>Hub URL</span>
                   <input
@@ -1105,17 +1319,6 @@ export function LfgPage({
                 <p className="muted" style={{ fontSize: '0.75rem', margin: 0 }}>
                   Discord → channel settings → Integrations → Webhooks. Stored locally; never sent to
                   the LFG hub.
-                </p>
-                <p className="muted" style={{ fontSize: '0.75rem', margin: 0 }}>
-                  Prefer the community hub bot (Join / Leave / Whisper)?{' '}
-                  <a
-                    href="https://discord.com/oauth2/authorize?client_id=1543118817654476840&permissions=536955880&scope=bot%20applications.commands"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Add it to your Discord
-                  </a>
-                  , then run <code>/lfg setup</code> in that server.
                 </p>
               </div>
             ) : null}
@@ -1155,6 +1358,31 @@ export function LfgPage({
                 </button>
               ))}
             </div>
+            <p className="lfg-form-hint muted">Hosting a squad, or looking for a host?</p>
+            <div className="vl-segment" role="group" aria-label="Intent">
+              <button
+                type="button"
+                className={`vl-segment__btn ${intent === 'host' ? 'is-on' : ''}`}
+                onClick={() => setIntent('host')}
+              >
+                Host squad
+              </button>
+              <button
+                type="button"
+                className={`vl-segment__btn ${intent === 'seek' ? 'is-on' : ''}`}
+                onClick={() => setIntent('seek')}
+              >
+                Looking for host
+              </button>
+            </div>
+            <label className="field">
+              <span>Voice channel URL (optional)</span>
+              <input
+                value={voiceChannelUrl}
+                placeholder="https://discord.gg/…"
+                onChange={(e) => setVoiceChannelUrl(e.target.value)}
+              />
+            </label>
             <label className="field">
               <span>Title</span>
               <input
@@ -1316,6 +1544,14 @@ export function LfgPage({
                 <option value="boss">Boss</option>
                 <option value="custom">Custom</option>
               </select>
+              <select
+                value={filterIntent}
+                onChange={(e) => setFilterIntent(e.target.value as typeof filterIntent)}
+              >
+                <option value="all">All intents</option>
+                <option value="host">Hosting</option>
+                <option value="seek">Looking for host</option>
+              </select>
               <select value={filterRegion} onChange={(e) => setFilterRegion(e.target.value)}>
                 <option value="all">All regions</option>
                 <option value="na">NA</option>
@@ -1364,7 +1600,17 @@ export function LfgPage({
               </div>
             ) : null}
 
-            {error ? <p className="market-error">{error}</p> : null}
+            {error ? (
+              <p
+                className={`market-error${
+                  /rate|429|Railway|local board/i.test(error) ? ' lfg-error--rate' : ''
+                }`}
+              >
+                {/rate|429|Railway/i.test(error)
+                  ? `Community hub rate-limited — using local board. ${error}`
+                  : error}
+              </p>
+            ) : null}
 
             {loading && listings.length === 0 ? (
               <ul className="market-card-list lfg-skeleton-list" aria-hidden>
@@ -1378,15 +1624,15 @@ export function LfgPage({
               </ul>
             ) : sortedListings.length === 0 ? (
               <EmptyState
-                title="No open queues"
+                title={hubOk ? 'No open queues' : 'Hub offline'}
                 body={
                   hubOk
                     ? showingMineScope
                       ? `Nothing for ${regionLabel(settings.lfgRegion)} · ${platformLabel(
                           settings.lfgPlatform,
                         )} right now — try Show all, or post a squad.`
-                      : 'Be the first — post a squad and others can join from this board.'
-                    : 'Hub unreachable. Check Advanced hub settings, or set Hub URL to local.'
+                      : 'Be the first — post a squad and others can join from this board (and Discord if your server ran /lfg setup).'
+                    : 'Can’t reach the LFG hub. Check Advanced hub settings, set Hub URL to local for a private board, or retry when online.'
                 }
                 actions={
                   <>
@@ -1400,9 +1646,18 @@ export function LfgPage({
                         Post your first squad
                       </button>
                     ) : (
-                      <button className="btn primary" type="button" onClick={() => void refresh()}>
-                        Retry hub
-                      </button>
+                      <>
+                        <button className="btn primary" type="button" onClick={() => void refresh()}>
+                          Retry hub
+                        </button>
+                        <button
+                          type="button"
+                          className="btn ghost"
+                          onClick={() => setHubAdvanced(true)}
+                        >
+                          Open hub settings
+                        </button>
+                      </>
                     )}
                   </>
                 }

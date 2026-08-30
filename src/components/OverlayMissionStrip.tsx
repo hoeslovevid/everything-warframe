@@ -77,6 +77,15 @@ export function OverlayMissionStrip({
     }
   }, [refreshLfg])
 
+  useEffect(() => {
+    const unsub = window.voidlens?.onLfgEvent?.(() => {
+      void refreshLfg()
+    })
+    return () => {
+      unsub?.()
+    }
+  }, [refreshLfg])
+
   const copyWhisper = async () => {
     if (!hosted?.whisper) return
     if (!(await copyText(hosted.whisper))) return

@@ -15,6 +15,8 @@ import {
   listConfiguredWebhookUrls,
 } from './discord-bot.mjs'
 
+export { getDiscordHubStatus, isBotReady } from './discord-bot.mjs'
+
 export {
   buildLfgDiscordPayload,
   buildLfgEmbed,
@@ -182,7 +184,14 @@ function webhookUrlsForFallback() {
 
 /**
  * @param {object} listing
- * @returns {Promise<{ messageId: string | null, posts: any[] }>}
+ * @returns {Promise<{
+ *   messageId: string | null,
+ *   posts: any[],
+ *   filteredOut?: boolean,
+ *   skips?: Array<{ guildId: string | null, channelId: string, reason: string }>,
+ *   targetCount?: number,
+ *   via?: 'bot' | 'webhook' | 'none'
+ * }>}
  */
 export async function createHubDiscord(listing) {
   if (isBotReady()) {
@@ -191,11 +200,22 @@ export async function createHubDiscord(listing) {
       return {
         messageId: result.messageId,
         posts: result.posts || [],
+        skips: result.skips || [],
+        targetCount: result.targetCount,
+        filteredOut: false,
+        via: 'bot',
       }
     }
-    // members_only filtered every guild — do not spam those channels via webhook
+    // Filter skipped every guild — do not spam those channels via webhook
     if (result.filteredOut) {
-      return { messageId: null, posts: [] }
+      return {
+        messageId: null,
+        posts: [],
+        filteredOut: true,
+        skips: result.skips || [],
+        targetCount: result.targetCount,
+        via: 'none',
+      }
     }
     console.warn('[lfg-api] Discord bot create returned no posts; trying webhook fallback')
   }
@@ -211,7 +231,14 @@ export async function createHubDiscord(listing) {
       console.warn('[lfg-api] Discord webhook failed:', r.error || r.status)
     }
   }
-  return { messageId: posts[0]?.messageId || null, posts }
+  return {
+    messageId: posts[0]?.messageId || null,
+    posts,
+    via: posts.length ? 'webhook' : 'none',
+    targetCount: 0,
+    filteredOut: false,
+    skips: [],
+  }
 }
 
 /** Live-update slots/roster on existing Discord message(s). */

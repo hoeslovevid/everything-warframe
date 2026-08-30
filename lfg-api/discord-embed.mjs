@@ -181,13 +181,18 @@ export function buildLfgEmbed(listing, opts = {}) {
     color = 0xd97706
   }
 
+  const seekingHost = String(listing.intent || 'host').toLowerCase() === 'seek'
   const statusLine = closed
     ? '**Status** · Closed'
     : full
       ? '**Status** · Full'
       : `**Status** · Open · looking for ${Math.max(0, slots - members)}`
 
-  const descriptionBits = [statusLine]
+  const descriptionBits = []
+  if (seekingHost && !closed) {
+    descriptionBits.push('**Looking for host**')
+  }
+  descriptionBits.push(statusLine)
   if (listing.notes) {
     descriptionBits.push(`\n${String(listing.notes).slice(0, 180)}`)
   }
@@ -198,6 +203,7 @@ export function buildLfgEmbed(listing, opts = {}) {
   footerParts.push('Everything Warframe')
   if (closed) footerParts.push('closed')
   else if (full) footerParts.push('full')
+  else if (seekingHost) footerParts.push('looking for host')
 
   let timestamp
   if (listing.createdAt && !Number.isNaN(Date.parse(listing.createdAt))) {
@@ -205,6 +211,32 @@ export function buildLfgEmbed(listing, opts = {}) {
   } else {
     timestamp = new Date().toISOString()
   }
+
+  /** @type {object[]} */
+  const fields = [
+    {
+      name: 'Squad',
+      value: slotBar(closed ? members : members, slots),
+      inline: true,
+    },
+    {
+      name: 'Details',
+      value: detailBits.join(' · ').slice(0, 200),
+      inline: true,
+    },
+  ]
+  if (listing.voiceChannelUrl) {
+    fields.push({
+      name: 'Voice',
+      value: `[Join voice](${String(listing.voiceChannelUrl).slice(0, 200)})`,
+      inline: true,
+    })
+  }
+  fields.push({
+    name: 'Roster',
+    value: rosterLines.join('\n').slice(0, 400),
+    inline: false,
+  })
 
   return {
     author: {
@@ -215,23 +247,7 @@ export function buildLfgEmbed(listing, opts = {}) {
     description: descriptionBits.join('\n').slice(0, 500) || undefined,
     color,
     thumbnail: { url: BRAND_ICON_URL },
-    fields: [
-      {
-        name: 'Squad',
-        value: slotBar(closed ? members : members, slots),
-        inline: true,
-      },
-      {
-        name: 'Details',
-        value: detailBits.join(' · ').slice(0, 200),
-        inline: true,
-      },
-      {
-        name: 'Roster',
-        value: rosterLines.join('\n').slice(0, 400),
-        inline: false,
-      },
-    ],
+    fields,
     footer: {
       text: footerParts.join(' · ').slice(0, 180),
       icon_url: BRAND_ICON_URL,

@@ -7,9 +7,10 @@ import '../cycles/module.css'
 type Props = {
   arbitration: ArbitrationInfo | null
   opacity?: number
+  onPostLfg?: (missionHint: string, title: string) => void
 }
 
-export function ArbitrationPanel({ arbitration, opacity }: Props) {
+export function ArbitrationPanel({ arbitration, opacity, onPostLfg }: Props) {
   const now = useNow()
   const upcoming = arbitration?.upcoming?.slice(0, 6) || []
 
@@ -36,6 +37,21 @@ export function ArbitrationPanel({ arbitration, opacity }: Props) {
             <span className="mod-stat__label">Ends in</span>
             <span className="mod-stat__value">{formatCountdown(arbitration.expiry, now)}</span>
           </div>
+          {onPostLfg ? (
+            <button
+              type="button"
+              className="btn ghost"
+              style={{ marginTop: 8 }}
+              onClick={() =>
+                onPostLfg(
+                  `${arbitration.type} · ${arbitration.node}`,
+                  'Arbitration',
+                )
+              }
+            >
+              Post LFG
+            </button>
+          ) : null}
 
           {upcoming.length ? (
             <>

@@ -45,6 +45,8 @@
             <a href="#how">How it works</a>
             <a href="#trust">Safety</a>
             <a href="#faq">FAQ</a>
+            <a href="lfg-discord.html">LFG Discord guide</a>
+            <a href="hub-status.html">LFG hub status</a>
             <a href="report.html">Report a bug</a>
             <a href="terms.html">Terms</a>
             <a href="privacy.html">Privacy</a>
@@ -280,9 +282,41 @@
           <p class="section-kicker">Squad finder</p>
           <h2>LFG Discord bot</h2>
           <p class="section-lede">
-            Post hub squads to your Discord with live slots, Join / Leave, and Whisper. Pick any
-            server you manage — then run <code>/lfg setup</code> in the channel you want.
+            Post hub squads to your Discord with live slots, Join / Leave, and Whisper. Three steps
+            — then hosts post from the companion.
           </p>
+          <ol class="steps discord-steps">
+            <li>
+              <span class="surface-mark" aria-hidden="true"></span>
+              <span class="step-num">01</span>
+              <div>
+                <h3>Add the bot</h3>
+                <p>Needs Manage Server. Invite once per guild you want announcements in.</p>
+              </div>
+            </li>
+            <li>
+              <span class="surface-mark" aria-hidden="true"></span>
+              <span class="step-num">02</span>
+              <div>
+                <h3>Run /lfg setup</h3>
+                <p>
+                  <code>/lfg setup channel:#your-lfg</code> · optional
+                  <code>members_only</code> / <code>activities</code>.
+                </p>
+              </div>
+            </li>
+            <li>
+              <span class="surface-mark" aria-hidden="true"></span>
+              <span class="step-num">03</span>
+              <div>
+                <h3>Link IGN &amp; post</h3>
+                <p>
+                  <code>/lfg link ign:YourIgn</code>, then post from the LFG tab. Join updates the
+                  hub board.
+                </p>
+              </div>
+            </li>
+          </ol>
           <div class="cta-row">
             <a
               class="btn primary"
@@ -292,12 +326,12 @@
             >
               Add to Discord
             </a>
+            <button type="button" class="btn ghost" id="copy-discord-invite">Copy invite</button>
+            <a class="btn ghost" href="lfg-discord.html">Full setup guide</a>
             <a class="btn ghost" href="#download">Get the companion</a>
           </div>
+          <p class="muted" id="discord-copy-status" hidden>Invite link copied.</p>
           <p class="muted">
-            Needs <strong>Manage Server</strong> on the target guild. After install:
-            <code>/lfg setup channel:#your-lfg</code> · optional
-            <code>members_only:True</code> · hosts use <code>/lfg link</code> for their IGN.
             By adding the bot you agree to our
             <a href="terms.html">Terms</a> and
             <a href="privacy.html">Privacy Policy</a>.
@@ -368,6 +402,7 @@
               <span class="vl-pill" id="meta-size">—</span>
               <span class="vl-pill" id="meta-size-linux">—</span>
             </div>
+            <p class="changelog-strip muted" id="changelog-strip" hidden></p>
             <div class="cta-row cta-row--download">
               <a
                 id="download-setup-2"
@@ -473,10 +508,9 @@
                   rel="noreferrer"
                   >Add to Discord</a
                 >
-                (needs Manage Server), pick your server, then in Discord run
-                <code>/lfg setup channel:#your-lfg-channel</code>. Hosts can
-                <code>/lfg link ign:YourIgn</code> for one-click Join and members-only announces.
-                Legal:
+                (needs Manage Server), then follow the
+                <a href="lfg-discord.html">LFG Discord setup guide</a>
+                (<code>/lfg setup</code>, <code>/lfg link</code>). Legal:
                 <a href="terms.html">Terms</a> ·
                 <a href="privacy.html">Privacy</a>.
               </p>
@@ -526,6 +560,7 @@
             rel="noreferrer"
             >Add Discord bot</a
           >
+          <a href="lfg-discord.html">LFG Discord guide</a>
           <a href="report.html">Report a bug</a>
           <a href="terms.html">Terms</a>
           <a href="privacy.html">Privacy</a>

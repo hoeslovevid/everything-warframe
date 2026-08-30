@@ -671,8 +671,10 @@ code {
   padding: 11px 18px;
   border-radius: var(--vl-radius);
   border: 1px solid var(--vl-btn-border);
+  font: inherit;
   font-weight: 550;
   font-size: 0.9rem;
+  cursor: pointer;
   color: var(--vl-frost);
   background: var(--vl-btn-bg-b);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
@@ -891,6 +893,19 @@ code {
 .section-discord .cta-row {
   margin-top: 8px;
   margin-bottom: 12px;
+}
+
+.section-discord .discord-steps {
+  margin: 1.25rem auto 1rem;
+  max-width: 44rem;
+  text-align: left;
+}
+
+.changelog-strip {
+  margin: 10px auto 4px;
+  max-width: 48rem;
+  font-size: 0.88rem;
+  line-height: 1.4;
 }
 
 .feature-rail {

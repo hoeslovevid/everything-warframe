@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LFG Discord setup — Everything Warframe</title>
+    <meta
+      name="description"
+      content="Add the Everything Warframe LFG Discord bot, run /lfg setup, link your IGN, and post squads from the companion."
+    />
+    <link
+      rel="canonical"
+      href="https://hoeslovevid.github.io/Warframe-Companion-Helper/lfg-discord.html"
+    />
+    <link rel="icon" href="assets/tray.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700&family=Sora:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="legal.css" />
+  </head>
+  <body>
+    <header class="site-nav">
+      <a class="nav-brand" href="index.html">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>Everything Warframe</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a class="nav-link-secondary" href="index.html#discord">Discord bot</a>
+        <a class="nav-link-secondary" href="index.html#download">Download</a>
+        <a
+          class="nav-ext"
+          id="nav-invite"
+          href="https://discord.com/oauth2/authorize?client_id=1543118817654476840&amp;permissions=536955880&amp;scope=bot%20applications.commands"
+          target="_blank"
+          rel="noreferrer"
+          >Add Discord bot</a
+        >
+        <a class="btn primary nav-cta" href="index.html#download">Get the app</a>
+      </nav>
+    </header>
+
+    <main class="page-shell">
+      <p class="brand-line">Everything Warframe</p>
+      <h1>LFG Discord setup</h1>
+      <p class="page-meta">Hub bot · Join / Leave / Whisper · companion board sync</p>
+      <p class="page-lede">
+        Three steps: add the bot to a server you manage, point it at an LFG channel, then link your
+        Warframe IGN so Join and members-only announce work.
+      </p>
+
+      <div class="cta-row" style="margin: 1.25rem 0 1.75rem">
+        <a
+          class="btn primary"
+          id="guide-invite"
+          href="https://discord.com/oauth2/authorize?client_id=1543118817654476840&amp;permissions=536955880&amp;scope=bot%20applications.commands"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Add to Discord
+        </a>
+        <button type="button" class="btn ghost" id="copy-invite">Copy invite link</button>
+        <a class="btn ghost" href="index.html#download">Get the companion</a>
+      </div>
+      <p class="muted" id="copy-status" hidden>Invite link copied.</p>
+
+      <ol class="steps" style="margin-top: 0">
+        <li>
+          <span class="surface-mark" aria-hidden="true"></span>
+          <span class="step-num">01</span>
+          <div>
+            <h3>Invite the bot</h3>
+            <p>
+              Needs <strong>Manage Server</strong>. Scopes: <code>bot</code> +
+              <code>applications.commands</code>. Permissions include Send Messages, Embed Links,
+              Read Message History, and Manage Webhooks.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="surface-mark" aria-hidden="true"></span>
+          <span class="step-num">02</span>
+          <div>
+            <h3>Run <code>/lfg setup</code></h3>
+            <p>
+              Pick the channel that should receive hub squads:
+              <code>/lfg setup channel:#your-lfg</code>. Optional:
+              <code>members_only:True</code> (only hosts in this server) and
+              <code>activities:relic,fissure</code> (comma-separated allowlist). Check with
+              <code>/lfg status</code> or <code>/lfg help</code>.
+            </p>
+          </div>
+        </li>
+        <li>
+          <span class="surface-mark" aria-hidden="true"></span>
+          <span class="step-num">03</span>
+          <div>
+            <h3>Link IGN &amp; post</h3>
+            <p>
+              Hosts: <code>/lfg link ign:YourIgn</code> (same name as in the companion). Post a squad
+              from the LFG tab — Discord gets a live embed with Join / Leave / Whisper. Joins update
+              the hub roster; hosts can get a DM when someone Joins.
+            </p>
+          </div>
+        </li>
+      </ol>
+
+      <h2 style="margin-top: 2.5rem">Useful commands</h2>
+      <ul>
+        <li><code>/lfg help</code> — short checklist and command list</li>
+        <li><code>/lfg status</code> — current channel, members-only, activity filter</li>
+        <li><code>/lfg clear</code> — stop announcing in this server</li>
+        <li><code>/lfg unlink</code> — remove your saved IGN</li>
+      </ul>
+
+      <h2>Companion tips</h2>
+      <ul>
+        <li>
+          After you post, the app shows whether Discord announced (or skipped members-only /
+          activity filters).
+        </li>
+        <li>
+          Advanced hub settings → Discord checklist has the invite and this guide. Personal webhooks
+          are optional and stay on your machine.
+        </li>
+        <li>
+          By adding the bot you agree to our <a href="terms.html">Terms</a> and
+          <a href="privacy.html">Privacy Policy</a>.
+        </li>
+      </ul>
+
+      <p class="muted" style="margin-top: 2rem">
+        <a href="index.html">← Back to Everything Warframe</a>
+      </p>
+    </main>
+
+    <script>
+      const INVITE =
+        'https://discord.com/oauth2/authorize?client_id=1543118817654476840&permissions=536955880&scope=bot%20applications.commands'
+      const btn = document.getElementById('copy-invite')
+      const status = document.getElementById('copy-status')
+      btn?.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(INVITE)
+          if (status) {
+            status.hidden = false
+            window.setTimeout(() => {
+              status.hidden = true
+            }, 2000)
+          }
+        } catch {
+          window.prompt('Copy invite URL:', INVITE)
+        }
+      })
+    </script>
+  </body>
+</html>

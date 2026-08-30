@@ -1233,6 +1233,16 @@ export function CompanionApp() {
                       pathMode={settings.fissurePathMode}
                       showStorms={settings.fissureShowStorms}
                       sort={settings.fissureSort}
+                      onPostLfg={(missionHint, title) => {
+                        setLfgPrefill({
+                          missionHint,
+                          title,
+                          activity: 'fissure',
+                          steelPath: /\bSP\b|Steel Path/i.test(title),
+                        })
+                        pushToast(`LFG form ready for “${title}”`, 'ok', 4500)
+                        goTab('lfg')
+                      }}
                     />
                   ) : null}
                   {enabledIds.includes('baro') ? (
@@ -1266,16 +1276,37 @@ export function CompanionApp() {
                     />
                   ) : null}
                   {enabledIds.includes('arbitration') ? (
-                    <ArbitrationPanel arbitration={data.arbitration} />
+                    <ArbitrationPanel
+                      arbitration={data.arbitration}
+                      onPostLfg={(missionHint, title) => {
+                        setLfgPrefill({ missionHint, title, activity: 'farm' })
+                        pushToast(`LFG form ready for “${title}”`, 'ok', 4500)
+                        goTab('lfg')
+                      }}
+                    />
                   ) : null}
                   {enabledIds.includes('invasions') ? (
                     <InvasionsPanel invasions={data.invasions} />
                   ) : null}
                   {enabledIds.includes('archon') ? (
-                    <ArchonPanel archonHunt={data.archonHunt} />
+                    <ArchonPanel
+                      archonHunt={data.archonHunt}
+                      onPostLfg={(missionHint, title) => {
+                        setLfgPrefill({ missionHint, title, activity: 'boss' })
+                        pushToast(`LFG form ready for “${title}”`, 'ok', 4500)
+                        goTab('lfg')
+                      }}
+                    />
                   ) : null}
                   {enabledIds.includes('deepArchimedea') ? (
-                    <DeepArchimedeaPanel deepArchimedea={data.deepArchimedea} />
+                    <DeepArchimedeaPanel
+                      deepArchimedea={data.deepArchimedea}
+                      onPostLfg={(missionHint, title) => {
+                        setLfgPrefill({ missionHint, title, activity: 'custom' })
+                        pushToast(`LFG form ready for “${title}”`, 'ok', 4500)
+                        goTab('lfg')
+                      }}
+                    />
                   ) : null}
                   {enabledIds.includes('relicRecommend') ? (
                     <RelicRecommendPanel
@@ -1411,6 +1442,11 @@ export function CompanionApp() {
                 onSyncInventory={() => void syncInventoryNow()}
                 searchPrefill={foundrySearchPrefill}
                 onSearchPrefillConsumed={() => setFoundrySearchPrefill(null)}
+                onBuyOnMarket={(itemName) => {
+                  setMarketFocusItem(itemName)
+                  pushToast(`Opening Market for “${itemName}”`, 'ok', 4000)
+                  goTab('market')
+                }}
               />
             ) : null}
 

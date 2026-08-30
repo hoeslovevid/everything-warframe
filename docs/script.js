@@ -61,10 +61,27 @@ function preferLinuxUi() {
   return /linux/i.test(ua) || /linux/i.test(platform) || /x11/i.test(platform)
 }
 
+function firstChangelogLine(body) {
+  if (typeof body !== 'string' || !body.trim()) return null
+  const lines = body
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((l) => l.replace(/^[-*#>\s]+/, '').trim())
+    .filter(Boolean)
+  const skip = /^(what's new|changelog|release notes|summary)$/i
+  for (const line of lines) {
+    if (skip.test(line)) continue
+    if (line.length < 8) continue
+    return line.length > 140 ? `${line.slice(0, 137)}…` : line
+  }
+  return null
+}
+
 async function loadLatestRelease() {
   const versionLine = document.getElementById('version-line')
   const meta = document.getElementById('download-meta')
   const checksumLine = document.getElementById('checksum-line')
+  const changelog = document.getElementById('changelog-strip')
 
   try {
     const res = await fetch(LATEST_API, {
@@ -117,6 +134,12 @@ async function loadLatestRelease() {
     if (checksumLine && digest) {
       checksumLine.hidden = false
       checksumLine.textContent = `SHA-256 (Windows Setup): ${digest}`
+    }
+
+    const note = firstChangelogLine(data.body)
+    if (changelog && note) {
+      changelog.hidden = false
+      changelog.textContent = `${tag}: ${note}`
     }
   } catch {
     setHref('download-setup', LATEST_PAGE)
@@ -188,8 +211,30 @@ function setupNavChrome() {
   }
 }
 
+function setupDiscordInviteCopy() {
+  const INVITE =
+    'https://discord.com/oauth2/authorize?client_id=1543118817654476840&permissions=536955880&scope=bot%20applications.commands'
+  const btn = document.getElementById('copy-discord-invite')
+  const status = document.getElementById('discord-copy-status')
+  if (!btn) return
+  btn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(INVITE)
+      if (status) {
+        status.hidden = false
+        window.setTimeout(() => {
+          status.hidden = true
+        }, 2000)
+      }
+    } catch {
+      window.prompt('Copy invite URL:', INVITE)
+    }
+  })
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   void loadLatestRelease()
   setupReveal()
   setupNavChrome()
+  setupDiscordInviteCopy()
 })

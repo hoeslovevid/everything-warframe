@@ -69,6 +69,7 @@ const api: VoidLensApi = {
   leaveLfg: (input) => ipcRenderer.invoke('lfg:leave', input),
   deleteLfg: (input) => ipcRenderer.invoke('lfg:delete', input),
   extendLfg: (input) => ipcRenderer.invoke('lfg:extend', input),
+  reportLfg: (input) => ipcRenderer.invoke('lfg:report', input),
   desktopNotify: (payload) => ipcRenderer.invoke('ui:desktopNotify', payload),
   getSetProgress: (opts) => ipcRenderer.invoke('setProgress:list', opts),
   getInventoryDiff: () => ipcRenderer.invoke('inventory:diff'),
@@ -213,6 +214,14 @@ const api: VoidLensApi = {
     const listener = (_: Electron.IpcRendererEvent, tab: string) => cb(tab)
     ipcRenderer.on('companion:navigate', listener)
     return () => ipcRenderer.removeListener('companion:navigate', listener)
+  },
+  onLfgEvent: (cb) => {
+    const listener = (
+      _: Electron.IpcRendererEvent,
+      event: { type?: string; id?: string; at?: string },
+    ) => cb(event)
+    ipcRenderer.on('lfg:event', listener)
+    return () => ipcRenderer.removeListener('lfg:event', listener)
   },
 }
 

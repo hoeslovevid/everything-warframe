@@ -114,6 +114,44 @@
   border-top: 1px solid color-mix(in srgb, var(--vl-border, #3a4a58) 70%, transparent);
 }
 
+.lfg-discord-link-hint {
+  font-size: 0.75rem;
+  margin: 8px 0 0;
+  line-height: 1.4;
+}
+
+.lfg-discord-checklist {
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--vl-border, #3a4a58) 80%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--vl-surface, #1a2229) 80%, transparent);
+}
+
+.lfg-discord-checklist__title {
+  margin: 0 0 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.lfg-discord-checklist ol {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--vl-mist, #9db4c4);
+}
+
+.lfg-discord-checklist li + li {
+  margin-top: 4px;
+}
+
+.lfg-discord-checklist__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
 .lfg-presets,
 .lfg-fissure-chips {
   display: flex;
@@ -479,4 +517,17 @@
   .lfg-layout {
     grid-template-columns: 1fr;
   }
+}
+
+.lfg-mini-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.lfg-mini-actions .btn {
+  flex: 1 1 auto;
+}
+.lfg-error--rate {
+  border-color: color-mix(in srgb, var(--warn, #c9a227) 55%, transparent);
 }

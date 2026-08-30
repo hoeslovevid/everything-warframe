@@ -14,8 +14,16 @@ import { joinListing, leaveListing } from './listing-actions.mjs'
 import {
   closeHubDiscord,
   createHubDiscord,
+  getDiscordHubStatus,
   updateHubDiscord,
 } from './discord-webhook.mjs'
+import {
+  attachSseClient,
+  broadcastLfgEvent,
+  bumpMetric,
+  getHubMetrics,
+  noteListingCount,
+} from './hub-events.mjs'
 
 const PORT = Number(process.env.PORT || process.env.LFG_PORT || 17864)
 const MAX_LISTINGS = 500
@@ -45,6 +53,10 @@ const RATE_MAX_WRITE = 120
  *  steelPath: boolean
  *  missionHint: string | null
  *  slotsTotal: number
+ *  intent?: 'host' | 'seek'
+ *  voiceChannelUrl?: string | null
+ *  reportCount?: number
+ *  hidden?: boolean
  *  discordMessageId?: string | null
  *  discordPosts?: Array<{ guildId?: string | null, channelId: string, messageId: string, webhookUrl?: string }>
  *  members: Array<{ ign: string, clientId: string, joinedAt: string, isHost: boolean }>
@@ -111,7 +123,8 @@ function purgeExpiredWithDiscord() {
 }
 
 function buildWhisper(row) {
-  const bits = [`LFG ${row.title}`.trim()]
+  const seek = row.intent === 'seek'
+  const bits = [seek ? `LFH ${row.title}`.trim() : `LFG ${row.title}`.trim()]
   if (row.relicKey) bits.push(row.relicKey)
   if (row.shareType) bits.push(row.shareType)
   if (row.steelPath) bits.push('SP')
@@ -192,13 +205,35 @@ const server = http.createServer(async (req, res) => {
 
     if (isHealth) {
       purgeExpiredWithDiscord()
+      const discord = getDiscordHubStatus()
+      const listings = store.count()
+      noteListingCount(listings)
       send(res, 200, {
         ok: true,
         service: 'everything-warframe-lfg',
-        listings: store.count(),
+        listings,
         store: store.kind,
         dataPath: store.path,
         now: new Date().toISOString(),
+        discord,
+        metrics: getHubMetrics(),
+      })
+      return
+    }
+
+    if (req.method === 'GET' && pathname === '/events') {
+      attachSseClient(req, res, process.env.LFG_ORIGIN || '*')
+      return
+    }
+
+    if (req.method === 'GET' && pathname === '/metrics') {
+      // Anonymous aggregate counters (no IGN / tokens). Always public for hub status pages.
+      noteListingCount(store.count())
+      send(res, 200, {
+        ok: true,
+        ...getHubMetrics(),
+        listings: store.count(),
+        discord: getDiscordHubStatus(),
       })
       return
     }
@@ -209,6 +244,7 @@ const server = http.createServer(async (req, res) => {
         region: url.searchParams.get('region') || '',
         platform: url.searchParams.get('platform') || '',
         activity: url.searchParams.get('activity') || '',
+        intent: url.searchParams.get('intent') || '',
         q: url.searchParams.get('q') || '',
       })
       send(res, 200, { listings: rows.map(publicListing) })
@@ -227,11 +263,19 @@ const server = http.createServer(async (req, res) => {
         send(res, 400, { error: 'clientId required' })
         return
       }
+      if (store.isClientBlocked?.(clientId)) {
+        send(res, 403, { error: 'This client is blocked from posting' })
+        return
+      }
       const ttl = Math.min(
         MAX_TTL_MS,
         Math.max(MIN_TTL_MS, Number(body.ttlMs) || DEFAULT_TTL_MS),
       )
-      const slotsTotal = Math.min(4, Math.max(2, Math.floor(Number(body.slotsTotal) || 4)))
+      const intent = cleanStr(body.intent || 'host', 8).toLowerCase() === 'seek' ? 'seek' : 'host'
+      const slotsTotal =
+        intent === 'seek'
+          ? 1
+          : Math.min(4, Math.max(2, Math.floor(Number(body.slotsTotal) || 4)))
       const now = Date.now()
       const id = randomUUID()
       const hostToken = randomBytes(18).toString('hex')
@@ -246,7 +290,7 @@ const server = http.createServer(async (req, res) => {
         region: cleanStr(body.region || 'na', 8).toLowerCase() || 'na',
         language: cleanStr(body.language || 'en', 8).toLowerCase() || 'en',
         activity: cleanStr(body.activity || 'custom', 24).toLowerCase() || 'custom',
-        title: cleanStr(body.title || 'LFG', 100) || 'LFG',
+        title: cleanStr(body.title || (intent === 'seek' ? 'Looking for host' : 'LFG'), 100) || 'LFG',
         notes: cleanStr(body.notes || '', 160),
         relicKey: body.relicKey ? cleanStr(body.relicKey, 40) : null,
         refinement: body.refinement ? cleanStr(body.refinement, 20).toLowerCase() : null,
@@ -254,6 +298,12 @@ const server = http.createServer(async (req, res) => {
         steelPath: Boolean(body.steelPath),
         missionHint: body.missionHint ? cleanStr(body.missionHint, 60) : null,
         slotsTotal,
+        intent,
+        voiceChannelUrl: body.voiceChannelUrl
+          ? cleanStr(body.voiceChannelUrl, 120)
+          : null,
+        reportCount: 0,
+        hidden: false,
         discordMessageId: null,
         discordPosts: [],
         members: [
@@ -269,16 +319,56 @@ const server = http.createServer(async (req, res) => {
       enforceCap()
       store.upsert(row)
       const pub = publicListing(row)
-      send(res, 201, { listing: pub, hostToken })
-      void createHubDiscord(pub).then((result) => {
+      /** Await Discord announce (bounded) so the companion can show post/skip feedback. */
+      let discord = {
+        posted: 0,
+        filteredOut: false,
+        skips: /** @type {any[]} */ ([]),
+        targetCount: 0,
+        via: 'none',
+      }
+      try {
+        const result = await Promise.race([
+          createHubDiscord(pub),
+          new Promise((resolve) =>
+            setTimeout(
+              () => resolve({ messageId: null, posts: [], via: 'none', timedOut: true }),
+              10_000,
+            ),
+          ),
+        ])
         const messageId = result?.messageId || null
         const posts = result?.posts || []
-        if (!messageId && !posts.length) return
-        const fresh = store.get(id)
-        if (!fresh) return
-        fresh.discordMessageId = messageId
-        fresh.discordPosts = posts
-        store.upsert(fresh)
+        if (messageId || posts.length) {
+          const fresh = store.get(id)
+          if (fresh) {
+            fresh.discordMessageId = messageId
+            fresh.discordPosts = posts
+            store.upsert(fresh)
+          }
+        }
+        discord = {
+          posted: posts.length,
+          filteredOut: Boolean(result?.filteredOut),
+          skips: result?.skips || [],
+          targetCount: result?.targetCount || 0,
+          via: result?.via || (posts.length ? 'bot' : 'none'),
+          timedOut: Boolean(result?.timedOut),
+        }
+        if (posts.length) bumpMetric('discordPosts', posts.length)
+      } catch (err) {
+        console.warn(
+          '[lfg-api] Discord announce error:',
+          err instanceof Error ? err.message : err,
+        )
+      }
+      bumpMetric('listingsCreated')
+      noteListingCount(store.count())
+      broadcastLfgEvent('listing', { type: 'created', id })
+      send(res, 201, {
+        listing: publicListing(store.get(id) || row),
+        hostToken,
+        discord,
       })
       return
     }
@@ -286,6 +376,10 @@ const server = http.createServer(async (req, res) => {
     const joinMatch = pathname.match(/^\/listings\/([^/]+)\/join$/)
     if (req.method === 'POST' && joinMatch) {
       const body = await readBody(req)
+      if (store.isClientBlocked?.(cleanStr(body.clientId, 64))) {
+        send(res, 403, { error: 'This client is blocked' })
+        return
+      }
       const result = joinListing(store, joinMatch[1], {
         ign: body.ign || body.hostIgn,
         clientId: body.clientId,
@@ -299,6 +393,8 @@ const server = http.createServer(async (req, res) => {
         alreadyJoined: Boolean(result.alreadyJoined),
       })
       if (!result.alreadyJoined) {
+        bumpMetric('joins')
+        broadcastLfgEvent('listing', { type: 'joined', id: joinMatch[1] })
         updateHubDiscord(listingForDiscord(result.row))
       }
       return
@@ -316,6 +412,13 @@ const server = http.createServer(async (req, res) => {
         closeHubDiscord(listingForDiscord(result.row))
       } else if (result.changed && result.row) {
         updateHubDiscord(listingForDiscord(result.row))
+      }
+      if (result.changed || result.closed) {
+        bumpMetric('leaves')
+        broadcastLfgEvent('listing', {
+          type: result.closed ? 'closed' : 'left',
+          id: leaveMatch[1],
+        })
       }
       send(res, 200, { ok: true })
       return
@@ -344,7 +447,35 @@ const server = http.createServer(async (req, res) => {
       const next = Math.min(base + addMs, now + MAX_TTL_MS)
       row.expiresAt = new Date(next).toISOString()
       store.upsert(row)
+      broadcastLfgEvent('listing', { type: 'extended', id: extendMatch[1] })
       send(res, 200, { listing: publicListing(row) })
+      return
+    }
+
+    const reportMatch = pathname.match(/^\/listings\/([^/]+)\/report$/)
+    if (req.method === 'POST' && reportMatch) {
+      const body = await readBody(req)
+      const reporter = cleanStr(body.clientId, 64)
+      if (!reporter) {
+        send(res, 400, { error: 'clientId required' })
+        return
+      }
+      const result = store.reportListing?.(
+        reportMatch[1],
+        reporter,
+        cleanStr(body.reason || '', 120),
+      )
+      if (!result?.ok) {
+        send(res, 400, { error: result?.error || 'Report failed' })
+        return
+      }
+      bumpMetric('reports')
+      if (result.hidden) {
+        const row = store.get(reportMatch[1])
+        if (row) closeHubDiscord(listingForDiscord(row))
+        broadcastLfgEvent('listing', { type: 'hidden', id: reportMatch[1] })
+      }
+      send(res, 200, result)
       return
     }
 
@@ -364,6 +495,7 @@ const server = http.createServer(async (req, res) => {
       }
       store.remove(row.id)
       closeHubDiscord(listingForDiscord(row))
+      broadcastLfgEvent('listing', { type: 'closed', id: row.id })
       send(res, 200, { ok: true })
       return
     }

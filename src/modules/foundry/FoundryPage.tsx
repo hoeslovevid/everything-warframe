@@ -21,6 +21,7 @@ type Props = {
   onSyncInventory?: () => void
   searchPrefill?: string | null
   onSearchPrefillConsumed?: () => void
+  onBuyOnMarket?: (itemName: string) => void
 }
 
 const CATEGORIES: Array<{ id: FoundryCategory | 'all'; label: string }> = [
@@ -78,6 +79,7 @@ export function FoundryPage({
   onSyncInventory,
   searchPrefill,
   onSearchPrefillConsumed,
+  onBuyOnMarket,
 }: Props) {
   const { status: inventory } = useInventory()
   const [search, setSearch] = useState('')
@@ -462,6 +464,16 @@ export function FoundryPage({
                       <span>
                         need {line.missing} · own {line.owned}
                       </span>
+                      {line.missing > 0 && onBuyOnMarket ? (
+                        <button
+                          type="button"
+                          className="btn ghost"
+                          style={{ marginLeft: 8 }}
+                          onClick={() => onBuyOnMarket(line.name)}
+                        >
+                          Buy on market
+                        </button>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

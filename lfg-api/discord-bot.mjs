@@ -3,6 +3,7 @@
  * Env: DISCORD_BOT_TOKEN (required)
  *      DISCORD_CHANNEL_ID (optional fallback channel)
  */
+import { randomBytes, randomUUID } from 'node:crypto'
 import {
   ActionRowBuilder,
   ButtonBuilder,
@@ -64,10 +65,28 @@ function envFallbackChannelId() {
 }
 
 /**
- * @returns {Array<{ guildId: string | null, channelId: string, webhookUrl?: string | null, membersOnly?: boolean }>}
+ * @returns {Array<{
+ *   guildId: string | null,
+ *   channelId: string,
+ *   webhookUrl?: string | null,
+ *   membersOnly?: boolean,
+ *   activityAllowlist?: string[],
+ *   regionAllowlist?: string[],
+ *   platformAllowlist?: string[],
+ *   pingRoleId?: string | null
+ * }>}
  */
 function resolveAnnounceTargets() {
-  /** @type {Map<string, { guildId: string | null, channelId: string, webhookUrl?: string | null, membersOnly?: boolean }>} */
+  /** @type {Map<string, {
+   *   guildId: string | null,
+   *   channelId: string,
+   *   webhookUrl?: string | null,
+   *   membersOnly?: boolean,
+   *   activityAllowlist?: string[],
+   *   regionAllowlist?: string[],
+   *   platformAllowlist?: string[],
+   *   pingRoleId?: string | null
+   * }>} */
   const byChannel = new Map()
   const store = getStore?.()
   const guilds = store?.listDiscordGuilds?.() || []
@@ -78,6 +97,10 @@ function resolveAnnounceTargets() {
       channelId: g.channelId,
       webhookUrl: g.webhookUrl || null,
       membersOnly: Boolean(g.membersOnly),
+      activityAllowlist: Array.isArray(g.activityAllowlist) ? g.activityAllowlist : [],
+      regionAllowlist: Array.isArray(g.regionAllowlist) ? g.regionAllowlist : [],
+      platformAllowlist: Array.isArray(g.platformAllowlist) ? g.platformAllowlist : [],
+      pingRoleId: g.pingRoleId || null,
     })
   }
   const envCh = envFallbackChannelId()
@@ -87,9 +110,23 @@ function resolveAnnounceTargets() {
       channelId: envCh,
       webhookUrl: null,
       membersOnly: false,
+      activityAllowlist: [],
+      regionAllowlist: [],
+      platformAllowlist: [],
+      pingRoleId: null,
     })
   }
   return [...byChannel.values()]
+}
+
+/** @param {string | null | undefined} raw */
+function parseCommaAllowlist(raw) {
+  if (typeof raw !== 'string') return null
+  return raw
+    .split(/[,;]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+    .slice(0, 24)
 }
 
 /**
@@ -139,22 +176,116 @@ async function guildHasAnyMember(guildId, userIds) {
 
 /**
  * @param {object} listing
- * @returns {Promise<Array<{ guildId: string | null, channelId: string, webhookUrl?: string | null, membersOnly?: boolean }>>}
+ * @returns {Promise<{
+ *   targets: Array<{
+ *     guildId: string | null,
+ *     channelId: string,
+ *     webhookUrl?: string | null,
+ *     membersOnly?: boolean,
+ *     activityAllowlist?: string[],
+ *     regionAllowlist?: string[],
+ *     platformAllowlist?: string[],
+ *     pingRoleId?: string | null
+ *   }>,
+ *   skips: Array<{ guildId: string | null, channelId: string, reason: string }>
+ * }>}
  */
 async function resolveTargetsForListing(listing) {
   const targets = resolveAnnounceTargets()
   const hostIds = hostDiscordUserIds(listing)
+  const activity = String(listing?.activity || '')
+    .trim()
+    .toLowerCase()
+  const region = String(listing?.region || '')
+    .trim()
+    .toLowerCase()
+  const platform = String(listing?.platform || '')
+    .trim()
+    .toLowerCase()
   /** @type {typeof targets} */
   const out = []
+  /** @type {Array<{ guildId: string | null, channelId: string, reason: string }>} */
+  const skips = []
+
   for (const t of targets) {
+    const allow = Array.isArray(t.activityAllowlist) ? t.activityAllowlist : []
+    if (allow.length && activity && !allow.includes(activity)) {
+      skips.push({
+        guildId: t.guildId,
+        channelId: t.channelId,
+        reason: `activity_filter (${activity} not in ${allow.join(', ')})`,
+      })
+      continue
+    }
+    const regionAllow = Array.isArray(t.regionAllowlist) ? t.regionAllowlist : []
+    if (regionAllow.length && region && !regionAllow.includes(region)) {
+      skips.push({
+        guildId: t.guildId,
+        channelId: t.channelId,
+        reason: `region_filter (${region} not in ${regionAllow.join(', ')})`,
+      })
+      continue
+    }
+    const platformAllow = Array.isArray(t.platformAllowlist) ? t.platformAllowlist : []
+    if (platformAllow.length && platform && !platformAllow.includes(platform)) {
+      skips.push({
+        guildId: t.guildId,
+        channelId: t.channelId,
+        reason: `platform_filter (${platform} not in ${platformAllow.join(', ')})`,
+      })
+      continue
+    }
     if (!t.membersOnly || !t.guildId) {
       out.push(t)
       continue
     }
-    if (!hostIds.length) continue
-    if (await guildHasAnyMember(t.guildId, hostIds)) out.push(t)
+    if (!hostIds.length) {
+      skips.push({
+        guildId: t.guildId,
+        channelId: t.channelId,
+        reason: 'members_only_no_link',
+      })
+      continue
+    }
+    if (await guildHasAnyMember(t.guildId, hostIds)) {
+      out.push(t)
+    } else {
+      skips.push({
+        guildId: t.guildId,
+        channelId: t.channelId,
+        reason: 'members_only_not_in_guild',
+      })
+    }
   }
-  return out
+  return { targets: out, skips }
+}
+
+/**
+ * Notify linked Discord host(s) that someone joined their squad.
+ * @param {object} listing
+ * @param {string} joinerIgn
+ * @param {string} joinerDiscordId
+ */
+async function notifyHostOfJoin(listing, joinerIgn, joinerDiscordId) {
+  if (!client || !listing) return
+  const hostIds = hostDiscordUserIds(listing).filter((id) => id !== joinerDiscordId)
+  if (!hostIds.length) return
+  const title = listing.title || 'LFG'
+  const whisper = buildWhisperFromListing(listing)
+  const body = [
+    `**${joinerIgn}** joined your squad **${title}**.`,
+    whisper ? `Whisper:\n\`\`\`\n${whisper}\n\`\`\`` : '',
+  ]
+    .filter(Boolean)
+    .join('\n')
+  for (const uid of hostIds.slice(0, 3)) {
+    try {
+      const user = await client.users.fetch(uid)
+      await user.send({ content: body })
+    } catch {
+      // DMs closed or no mutual server — ignore
+    }
+  }
 }
 
 /**
@@ -291,6 +422,39 @@ function buildSlashCommands() {
                 'Only announce squads whose host linked IGN is in this Discord server',
               )
               .setRequired(false),
+          )
+          .addStringOption((opt) =>
+            opt
+              .setName('activities')
+              .setDescription(
+                'Optional activity allowlist (comma-separated), e.g. radshare,sortie,farm — empty = all',
+              )
+              .setRequired(false)
+              .setMaxLength(120),
+          )
+          .addStringOption((opt) =>
+            opt
+              .setName('regions')
+              .setDescription(
+                'Optional region allowlist (comma-separated), e.g. na,eu — empty = all',
+              )
+              .setRequired(false)
+              .setMaxLength(80),
+          )
+          .addStringOption((opt) =>
+            opt
+              .setName('platforms')
+              .setDescription(
+                'Optional platform allowlist (comma-separated), e.g. pc,psn — empty = all',
+              )
+              .setRequired(false)
+              .setMaxLength(80),
+          )
+          .addRoleOption((opt) =>
+            opt
+              .setName('ping_role')
+              .setDescription('Optional role to ping when a new LFG is announced')
+              .setRequired(false),
           ),
       )
       .addSubcommand((sc) =>
@@ -298,6 +462,11 @@ function buildSlashCommands() {
       )
       .addSubcommand((sc) =>
         sc.setName('clear').setDescription('Remove this server’s LFG channel config (admin)'),
+      )
+      .addSubcommand((sc) =>
+        sc
+          .setName('help')
+          .setDescription('How to use the Everything Warframe LFG Discord bot'),
       )
       .addSubcommand((sc) =>
         sc
@@ -315,6 +484,91 @@ function buildSlashCommands() {
       .addSubcommand((sc) =>
         sc.setName('unlink').setDescription('Clear your saved Warframe IGN'),
       )
+      .addSubcommand((sc) =>
+        sc
+          .setName('post')
+          .setDescription('Create a hub LFG listing from Discord')
+          .addStringOption((opt) =>
+            opt
+              .setName('title')
+              .setDescription('Squad title')
+              .setRequired(true)
+              .setMinLength(2)
+              .setMaxLength(100),
+          )
+          .addStringOption((opt) =>
+            opt
+              .setName('activity')
+              .setDescription('Activity type')
+              .setRequired(false)
+              .addChoices(
+                { name: 'Relic', value: 'relic' },
+                { name: 'Fissure', value: 'fissure' },
+                { name: 'Farm', value: 'farm' },
+                { name: 'Boss', value: 'boss' },
+                { name: 'Custom', value: 'custom' },
+              ),
+          )
+          .addStringOption((opt) =>
+            opt
+              .setName('platform')
+              .setDescription('Platform (pc, psn, xbox, switch, …)')
+              .setRequired(false)
+              .setMaxLength(16),
+          )
+          .addStringOption((opt) =>
+            opt
+              .setName('region')
+              .setDescription('Region (na, eu, as, …)')
+              .setRequired(false)
+              .setMaxLength(8),
+          )
+          .addStringOption((opt) =>
+            opt
+              .setName('notes')
+              .setDescription('Optional notes')
+              .setRequired(false)
+              .setMaxLength(160),
+          )
+          .addIntegerOption((opt) =>
+            opt
+              .setName('slots')
+              .setDescription('Squad size (2–4); ignored when seeking a host')
+              .setRequired(false)
+              .setMinValue(2)
+              .setMaxValue(4),
+          )
+          .addStringOption((opt) =>
+            opt
+              .setName('intent')
+              .setDescription('Are you hosting or looking for a host?')
+              .setRequired(false)
+              .addChoices(
+                { name: 'Host', value: 'host' },
+                { name: 'Looking for host', value: 'seek' },
+              ),
+          )
+          .addBooleanOption((opt) =>
+            opt
+              .setName('steel_path')
+              .setDescription('Steel Path')
+              .setRequired(false),
+          )
+          .addStringOption((opt) =>
+            opt
+              .setName('mission_hint')
+              .setDescription('Mission / node hint')
+              .setRequired(false)
+              .setMaxLength(60),
+          )
+          .addStringOption((opt) =>
+            opt
+              .setName('relic_key')
+              .setDescription('Relic (e.g. Lith A1)')
+              .setRequired(false)
+              .setMaxLength(40),
+          ),
+      )
       .toJSON(),
   ]
 }
@@ -324,7 +578,7 @@ async function registerSlashCommands(c) {
   const rest = new REST({ version: '10' }).setToken(String(process.env.DISCORD_BOT_TOKEN).trim())
   try {
     await rest.put(Routes.applicationCommands(c.user.id), { body })
-    console.info('[LFG] Discord slash commands registered (/lfg setup|status|clear|link|unlink)')
+    console.info('[LFG] Discord slash commands registered (/lfg setup|status|clear|help|link|unlink|post)')
   } catch (err) {
     console.warn(
       '[lfg-api] Discord command register failed:',
@@ -370,9 +624,38 @@ async function handleSetupCommand(interaction) {
   }
 
   const membersOnlyOpt = interaction.options.getBoolean('members_only')
+  const activitiesRaw = interaction.options.getString('activities')
+  const regionsRaw = interaction.options.getString('regions')
+  const platformsRaw = interaction.options.getString('platforms')
+  const pingRole = interaction.options.getRole('ping_role')
   const prev = store.getDiscordGuild?.(interaction.guildId)
   const membersOnly =
     typeof membersOnlyOpt === 'boolean' ? membersOnlyOpt : Boolean(prev?.membersOnly)
+  const parsedActivities = parseCommaAllowlist(activitiesRaw)
+  const activityAllowlist =
+    parsedActivities !== null
+      ? parsedActivities
+      : Array.isArray(prev?.activityAllowlist)
+        ? prev.activityAllowlist
+        : []
+  const parsedRegions = parseCommaAllowlist(regionsRaw)
+  const regionAllowlist =
+    parsedRegions !== null
+      ? parsedRegions
+      : Array.isArray(prev?.regionAllowlist)
+        ? prev.regionAllowlist
+        : []
+  const parsedPlatforms = parseCommaAllowlist(platformsRaw)
+  const platformAllowlist =
+    parsedPlatforms !== null
+      ? parsedPlatforms
+      : Array.isArray(prev?.platformAllowlist)
+        ? prev.platformAllowlist
+        : []
+  const pingRoleId =
+    pingRole && 'id' in pingRole
+      ? pingRole.id
+      : prev?.pingRoleId || null
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral })
 
@@ -405,17 +688,39 @@ async function handleSetupCommand(interaction) {
     webhookUrl,
     configuredBy: interaction.user.id,
     membersOnly,
+    activityAllowlist,
+    regionAllowlist,
+    platformAllowlist,
+    pingRoleId,
   })
 
+  const guideUrl =
+    'https://hoeslovevid.github.io/Warframe-Companion-Helper/lfg-discord.html'
   const bits = [
     `LFG announces will post in <#${channel.id}>.`,
     membersOnly
       ? '**Members only:** on — only squads whose host ran `/lfg link` with an IGN matching a member of this server.'
-      : '**Members only:** off — all hub squads are announced here.',
+      : '**Members only:** off — all hub squads are announced here (subject to filters).',
+    activityAllowlist.length
+      ? `**Activity filter:** ${activityAllowlist.join(', ')}`
+      : '**Activity filter:** off (all activities).',
+    regionAllowlist.length
+      ? `**Region filter:** ${regionAllowlist.join(', ')}`
+      : '**Region filter:** off (all regions).',
+    platformAllowlist.length
+      ? `**Platform filter:** ${platformAllowlist.join(', ')}`
+      : '**Platform filter:** off (all platforms).',
+    pingRoleId ? `**Ping role:** <@&${pingRoleId}>` : '**Ping role:** off.',
     webhookUrl
       ? 'A channel webhook was created/reused as fallback.'
       : 'Could not create a webhook (bot needs Manage Webhooks) — bot posts will still work.',
-    'Hosts: `/lfg link ign:YourIgn` so members-only servers can recognize you.',
+    '',
+    '**Next steps**',
+    '1. Hosts: `/lfg link ign:YourIgn` (needed for Join + members-only + `/lfg post`).',
+    '2. Post a squad with `/lfg post` or from Everything Warframe → LFG.',
+    '3. Players use **Join** / **Leave** / **Whisper** on the Discord embed.',
+    `Guide: ${guideUrl}`,
+    'Commands: `/lfg help` · `/lfg status` · `/lfg clear`',
   ]
   await interaction.editReply({ content: bits.join('\n') })
 }
@@ -447,6 +752,16 @@ async function handleStatusCommand(interaction) {
     content: [
       `Channel: <#${cfg.channelId}>`,
       `Members only: ${cfg.membersOnly ? 'yes' : 'no'}`,
+      `Activity filter: ${
+        cfg.activityAllowlist?.length ? cfg.activityAllowlist.join(', ') : 'off (all)'
+      }`,
+      `Region filter: ${
+        cfg.regionAllowlist?.length ? cfg.regionAllowlist.join(', ') : 'off (all)'
+      }`,
+      `Platform filter: ${
+        cfg.platformAllowlist?.length ? cfg.platformAllowlist.join(', ') : 'off (all)'
+      }`,
+      `Ping role: ${cfg.pingRoleId ? `<@&${cfg.pingRoleId}>` : 'off'}`,
       `Webhook fallback: ${cfg.webhookUrl ? 'yes' : 'no'}`,
       cfg.configuredAt ? `Configured: ${cfg.configuredAt}` : '',
       cfg.membersOnly
@@ -455,6 +770,38 @@ async function handleStatusCommand(interaction) {
     ]
       .filter(Boolean)
       .join('\n'),
+    flags: MessageFlags.Ephemeral,
+  })
+}
+
+async function handleHelpCommand(interaction) {
+  const invite =
+    'https://discord.com/oauth2/authorize?client_id=1543118817654476840&permissions=536955880&scope=bot%20applications.commands'
+  const guide =
+    'https://hoeslovevid.github.io/Warframe-Companion-Helper/lfg-discord.html'
+  await interaction.reply({
+    content: [
+      '**Everything Warframe LFG bot**',
+      '',
+      '**Admins**',
+      '• `/lfg setup channel:#lfg` — bind announce channel',
+      '• `members_only:True` — only hosts in this server (via `/lfg link`)',
+      '• `activities:relic,fissure` — optional activity allowlist',
+      '• `regions:na,eu` — optional region allowlist',
+      '• `platforms:pc,psn` — optional platform allowlist',
+      '• `ping_role:@LFG` — ping a role on new announces',
+      '• `/lfg status` / `/lfg clear`',
+      '',
+      '**Everyone**',
+      '• `/lfg link ign:YourIgn` — Join button + members-only matching + `/lfg post`',
+      '• `/lfg unlink` — clear linked IGN',
+      '• `/lfg post title:…` — create a hub listing (join a voice channel to attach voice link)',
+      '• On posts: **Join** · **Leave** · **Whisper** (hosts get a DM on Join when linked)',
+      '',
+      `Invite: ${invite}`,
+      `Guide: ${guide}`,
+      'Terms / Privacy: https://hoeslovevid.github.io/Warframe-Companion-Helper/terms.html',
+    ].join('\n'),
     flags: MessageFlags.Ephemeral,
   })
 }
@@ -522,6 +869,133 @@ async function handleUnlinkCommand(interaction) {
   })
 }
 
+const DEFAULT_POST_TTL_MS = 15 * 60_000
+
+/**
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ */
+async function handlePostCommand(interaction) {
+  const store = getStore?.()
+  if (!store?.upsert) {
+    await interaction.reply({
+      content: 'Store unavailable — try again later.',
+      flags: MessageFlags.Ephemeral,
+    })
+    return
+  }
+
+  const hostIgn = store.getDiscordUserIgn?.(interaction.user.id)
+  if (!hostIgn) {
+    await interaction.reply({
+      content: 'Link your Warframe IGN first with `/lfg link ign:YourIgn`, then run `/lfg post` again.',
+      flags: MessageFlags.Ephemeral,
+    })
+    return
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral })
+
+  const intentRaw = cleanStr(interaction.options.getString('intent') || 'host', 8).toLowerCase()
+  const intent = intentRaw === 'seek' ? 'seek' : 'host'
+  const slotsOpt = interaction.options.getInteger('slots')
+  const slotsTotal =
+    intent === 'seek'
+      ? 1
+      : Math.min(4, Math.max(2, Math.floor(Number(slotsOpt) || 4)))
+
+  let voiceChannelUrl = null
+  const member = interaction.member
+  const voiceChannelId =
+    member && typeof member === 'object' && 'voice' in member
+      ? member.voice?.channelId || null
+      : null
+  if (voiceChannelId && interaction.guildId) {
+    voiceChannelUrl = `https://discord.com/channels/${interaction.guildId}/${voiceChannelId}`
+  }
+
+  const now = Date.now()
+  const id = randomUUID()
+  const hostToken = randomBytes(18).toString('hex')
+  const titleRaw = cleanStr(interaction.options.getString('title', true), 100)
+  const row = {
+    id,
+    createdAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + DEFAULT_POST_TTL_MS).toISOString(),
+    hostIgn,
+    hostToken,
+    platform:
+      cleanStr(interaction.options.getString('platform') || 'pc', 16).toLowerCase() || 'pc',
+    region:
+      cleanStr(interaction.options.getString('region') || 'na', 8).toLowerCase() || 'na',
+    language: 'en',
+    activity:
+      cleanStr(interaction.options.getString('activity') || 'custom', 24).toLowerCase() ||
+      'custom',
+    title:
+      titleRaw ||
+      (intent === 'seek' ? 'Looking for host' : 'LFG'),
+    notes: cleanStr(interaction.options.getString('notes') || '', 160),
+    relicKey: (() => {
+      const v = interaction.options.getString('relic_key')
+      return v ? cleanStr(v, 40) : null
+    })(),
+    refinement: null,
+    shareType: null,
+    steelPath: Boolean(interaction.options.getBoolean('steel_path')),
+    missionHint: (() => {
+      const v = interaction.options.getString('mission_hint')
+      return v ? cleanStr(v, 60) : null
+    })(),
+    slotsTotal,
+    intent,
+    voiceChannelUrl,
+    reportCount: 0,
+    hidden: false,
+    discordMessageId: null,
+    discordPosts: [],
+    members: [
+      {
+        ign: hostIgn,
+        clientId: discordClientId(interaction.user.id),
+        joinedAt: new Date(now).toISOString(),
+        isHost: true,
+      },
+    ],
+  }
+
+  store.upsert(row)
+
+  const enriched = enrichListingForDiscord(row)
+  let posts = []
+  try {
+    const result = await createLfgMessage(enriched)
+    posts = result?.posts || []
+    if (posts.length || result?.messageId) {
+      const fresh = store.get?.(id)
+      if (fresh) {
+        fresh.discordMessageId = result.messageId || posts[0]?.messageId || null
+        fresh.discordPosts = posts
+        store.upsert(fresh)
+      }
+    }
+  } catch (err) {
+    console.warn(
+      '[lfg-api] Discord /lfg post announce failed:',
+      err instanceof Error ? err.message : err,
+    )
+  }
+
+  const bits = [
+    `Posted **${row.title}** as **${hostIgn}** (${intent === 'seek' ? 'looking for host' : 'hosting'}).`,
+    voiceChannelUrl ? `Voice link attached from your current channel.` : '',
+    posts.length
+      ? `Announced in ${posts.length} channel(s).`
+      : 'Saved to the hub board — Discord announce may be filtered or not configured (`/lfg setup`).',
+  ].filter(Boolean)
+
+  await interaction.editReply({ content: bits.join('\n') })
+}
+
 /**
  * @param {import('discord.js').ButtonInteraction} interaction
  * @param {string} listingId
@@ -556,6 +1030,7 @@ async function performDiscordJoin(listingId, discordUserId, ign) {
   })
   if (result.ok && result.row && !result.alreadyJoined) {
     void editLfgMessage(enrichListingForDiscord(result.row))
+    void notifyHostOfJoin(result.row, ign, discordUserId)
   }
   return result
 }
@@ -596,7 +1071,7 @@ export function startDiscordBot(storeGetter) {
     const token = String(process.env.DISCORD_BOT_TOKEN).trim()
 
     client = new Client({
-      intents: [GatewayIntentBits.Guilds],
+      intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
       partials: [Partials.Channel],
     })
 
@@ -617,8 +1092,10 @@ export function startDiscordBot(storeGetter) {
           if (sub === 'setup') await handleSetupCommand(interaction)
           else if (sub === 'status') await handleStatusCommand(interaction)
           else if (sub === 'clear') await handleClearCommand(interaction)
+          else if (sub === 'help') await handleHelpCommand(interaction)
           else if (sub === 'link') await handleLinkCommand(interaction)
           else if (sub === 'unlink') await handleUnlinkCommand(interaction)
+          else if (sub === 'post') await handlePostCommand(interaction)
           return
         }
 
@@ -750,36 +1227,55 @@ export function startDiscordBot(storeGetter) {
 }
 
 /**
- * Post to configured guild channels (+ env fallback), respecting members_only.
+ * Post to configured guild channels (+ env fallback), respecting members_only + activity/region/platform filters.
  * @param {object} listing
- * @returns {Promise<{ messageId: string | null, posts: Array<{ guildId: string | null, channelId: string, messageId: string }>, filteredOut?: boolean }>}
+ * @returns {Promise<{
+ *   messageId: string | null,
+ *   posts: Array<{ guildId: string | null, channelId: string, messageId: string }>,
+ *   filteredOut?: boolean,
+ *   skips?: Array<{ guildId: string | null, channelId: string, reason: string }>,
+ *   targetCount?: number
+ * }>}
  */
 export async function createLfgMessage(listing) {
-  if (!isBotReady()) return { messageId: null, posts: [] }
+  if (!isBotReady()) return { messageId: null, posts: [], targetCount: 0 }
   const allTargets = resolveAnnounceTargets()
   if (!allTargets.length) {
     console.warn('[lfg-api] Discord bot ready but no channels configured (/lfg setup or DISCORD_CHANNEL_ID)')
-    return { messageId: null, posts: [] }
+    return { messageId: null, posts: [], targetCount: 0, skips: [] }
   }
 
-  const targets = await resolveTargetsForListing(listing)
+  const { targets, skips } = await resolveTargetsForListing(listing)
   if (!targets.length) {
     console.info(
-      '[lfg-api] Discord announce skipped (members_only filter) for',
+      '[lfg-api] Discord announce skipped for',
       listing?.hostIgn || listing?.id,
+      skips.map((s) => s.reason).join(', ') || 'filter',
     )
-    return { messageId: null, posts: [], filteredOut: true }
+    return {
+      messageId: null,
+      posts: [],
+      filteredOut: true,
+      skips,
+      targetCount: allTargets.length,
+    }
   }
 
   /** @type {Array<{ guildId: string | null, channelId: string, messageId: string }>} */
   const posts = []
-  const payload = toDiscordPayload(listing)
+  const basePayload = toDiscordPayload(listing)
 
   for (const t of targets) {
     const ch = await fetchTextChannel(t.channelId)
     if (!ch || !('send' in ch)) continue
     try {
-      const msg = await ch.send(payload)
+      /** @type {import('discord.js').MessageCreateOptions} */
+      const sendPayload = { ...basePayload }
+      if (t.pingRoleId) {
+        sendPayload.content = `<@&${t.pingRoleId}>`
+        sendPayload.allowedMentions = { roles: [t.pingRoleId] }
+      }
+      const msg = await ch.send(sendPayload)
       if (msg?.id) {
         posts.push({
           guildId: t.guildId,
@@ -795,7 +1291,23 @@ export async function createLfgMessage(listing) {
     }
   }
 
-  return { messageId: posts[0]?.messageId || null, posts }
+  return {
+    messageId: posts[0]?.messageId || null,
+    posts,
+    skips,
+    targetCount: allTargets.length,
+  }
+}
+
+/** Snapshot for /health and companion status. */
+export function getDiscordHubStatus() {
+  const guilds = getStore?.()?.listDiscordGuilds?.() || []
+  return {
+    botReady: isBotReady(),
+    guildCount: guilds.length,
+    membersOnlyGuilds: guilds.filter((g) => g.membersOnly).length,
+    announceTargets: resolveAnnounceTargets().length,
+  }
 }
 
 /**

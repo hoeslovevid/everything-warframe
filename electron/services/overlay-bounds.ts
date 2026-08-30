@@ -22,6 +22,7 @@ const PANEL_SIZE: Partial<Record<ModuleId, { w: number; h: number }>> = {
   deepArchimedea: { w: 340, h: 260 },
   rivens: { w: 420, h: 360 },
   relicRecommend: { w: 320, h: 280 },
+  lfg: { w: 300, h: 260 },
 }
 
 const PAD = 20

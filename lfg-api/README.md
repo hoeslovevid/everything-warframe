@@ -121,9 +121,17 @@ Optional: only announce squads whose host is in **this** Discord server:
 /lfg setup channel:#your-lfg-channel members_only:True
 ```
 
+Optional: only announce matching activities (comma-separated):
+
+```
+/lfg setup channel:#your-lfg-channel activities:relic,fissure
+```
+
 That stores the channel in the hub DB and auto-creates a channel webhook as fallback.  
 With **members only**, the host must have run `/lfg link` (or joined Discord with a matching IGN) and be a member of that server — otherwise that guild is skipped.  
-Also useful: `/lfg status`, `/lfg clear`.
+Also useful: `/lfg help`, `/lfg status`, `/lfg clear`.
+
+Public guide: https://hoeslovevid.github.io/Warframe-Companion-Helper/lfg-discord.html
 
 6. Anyone can save their Warframe name for Join **and** members-only announce matching:
 
@@ -176,7 +184,8 @@ Mount durable storage at that path, then set **Hub URL** in the app to `https://
 
 | Method | Path | Notes |
 |--------|------|--------|
-| GET | `/health` | Hub status (`store`, `dataPath`, `listings`) |
+| GET | `/health` | Hub status (`store`, `dataPath`, `listings`, `discord`) |
+| POST | `/listings` | Create squad; response includes `discord` announce result |
 | GET | `/listings?region=&activity=&q=` | Open queues |
 | POST | `/listings` | Create (returns `hostToken`) |
 | POST | `/listings/:id/join` | Join squad |

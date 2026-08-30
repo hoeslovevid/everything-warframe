@@ -460,6 +460,10 @@ function mergeSettings(raw: Partial<AppSettings> | null | undefined): AppSetting
             ).filter(([, v]) => typeof v === 'string') as Array<[string, string]>,
           )
         : base.lfgDiscordMessageIds,
+    lfgHubMetricsOptIn:
+      typeof (raw as { lfgHubMetricsOptIn?: boolean }).lfgHubMetricsOptIn === 'boolean'
+        ? (raw as { lfgHubMetricsOptIn: boolean }).lfgHubMetricsOptIn
+        : base.lfgHubMetricsOptIn,
     widgetServerEnabled: raw.widgetServerEnabled ?? base.widgetServerEnabled,
     widgetServerPort:
       typeof raw.widgetServerPort === 'number' &&

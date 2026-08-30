@@ -19,18 +19,21 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
  * @property {string} path
  * @property {() => number} count
  * @property {() => any[]} purgeExpired  returns removed rows (for Discord cleanup)
- * @property {(filters?: { region?: string, platform?: string, activity?: string, q?: string }) => any[]} list
+ * @property {(filters?: { region?: string, platform?: string, activity?: string, q?: string, intent?: string }) => any[]} list
  * @property {(id: string) => any | null} get
  * @property {(row: any) => void} upsert
  * @property {(id: string) => void} remove
- * @property {() => Array<{ guildId: string, channelId: string, webhookUrl: string | null, configuredBy: string | null, configuredAt: string, membersOnly: boolean }>} listDiscordGuilds
+ * @property {() => Array<{ guildId: string, channelId: string, webhookUrl: string | null, configuredBy: string | null, configuredAt: string, membersOnly: boolean, activityAllowlist: string[], regionAllowlist: string[], platformAllowlist: string[], pingRoleId: string | null }>} listDiscordGuilds
  * @property {(guildId: string) => any | null} getDiscordGuild
- * @property {(row: { guildId: string, channelId: string, webhookUrl?: string | null, configuredBy?: string | null, membersOnly?: boolean }) => void} upsertDiscordGuild
+ * @property {(row: { guildId: string, channelId: string, webhookUrl?: string | null, configuredBy?: string | null, membersOnly?: boolean, activityAllowlist?: string[] | null, regionAllowlist?: string[] | null, platformAllowlist?: string[] | null, pingRoleId?: string | null }) => void} upsertDiscordGuild
  * @property {(guildId: string) => void} removeDiscordGuild
  * @property {(discordUserId: string) => string | null} getDiscordUserIgn
  * @property {(discordUserId: string, ign: string) => void} setDiscordUserIgn
  * @property {(discordUserId: string) => void} clearDiscordUserIgn
  * @property {(ign: string) => string[]} findDiscordUserIdsByIgn
+ * @property {(clientId: string) => boolean} isClientBlocked
+ * @property {(clientId: string, reason?: string) => void} blockClient
+ * @property {(listingId: string, reporterClientId: string, reason?: string) => { ok: boolean, reportCount?: number, hidden?: boolean, error?: string }} reportListing
  * @property {() => void} [close]
  */
 
@@ -44,6 +47,38 @@ export function resolveDataPath() {
 
 function ensureParentDir(filePath) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true })
+}
+
+/** @param {unknown} raw */
+function normalizeActivityAllowlist(raw) {
+  /** @type {string[]} */
+  let parts = []
+  if (Array.isArray(raw)) {
+    parts = raw.map((s) => String(s || '').trim().toLowerCase())
+  } else if (typeof raw === 'string') {
+    parts = raw.split(/[,;]+/).map((s) => s.trim().toLowerCase())
+  }
+  return [...new Set(parts.filter(Boolean))].slice(0, 24)
+}
+
+const normalizeStringAllowlist = normalizeActivityAllowlist
+
+/**
+ * @param {any} g
+ */
+function normalizeGuildRow(guildId, g) {
+  return {
+    guildId,
+    channelId: String(g.channelId),
+    webhookUrl: g.webhookUrl ? String(g.webhookUrl) : null,
+    configuredBy: g.configuredBy ? String(g.configuredBy) : null,
+    configuredAt: g.configuredAt || new Date().toISOString(),
+    membersOnly: Boolean(g.membersOnly),
+    activityAllowlist: normalizeStringAllowlist(g.activityAllowlist),
+    regionAllowlist: normalizeStringAllowlist(g.regionAllowlist),
+    platformAllowlist: normalizeStringAllowlist(g.platformAllowlist),
+    pingRoleId: g.pingRoleId ? String(g.pingRoleId) : null,
+  }
 }
 
 function migrateJsonInto(store, jsonPath) {
@@ -75,16 +110,20 @@ function migrateJsonInto(store, jsonPath) {
 }
 
 function applyFilters(rows, filters = {}) {
-  let out = rows
+  let out = rows.filter((r) => !r.hidden)
   const region = (filters.region || '').toLowerCase()
   const platform = (filters.platform || '').toLowerCase()
   const activity = (filters.activity || '').toLowerCase()
+  const intent = (filters.intent || '').toLowerCase()
   const q = (filters.q || '').toLowerCase()
   if (region && region !== 'all') out = out.filter((r) => r.region === region)
   if (platform && platform !== 'all') {
     out = out.filter((r) => r.platform === platform || platform === 'crossplay')
   }
   if (activity && activity !== 'all') out = out.filter((r) => r.activity === activity)
+  if (intent && intent !== 'all') {
+    out = out.filter((r) => String(r.intent || 'host') === intent)
+  }
   if (q) {
     out = out.filter(
       (r) =>
@@ -105,6 +144,10 @@ function createJsonStore(filePath) {
   const discordGuilds = new Map()
   /** @type {Map<string, string>} */
   const discordUserIgns = new Map()
+  /** @type {Set<string>} */
+  const blockedClients = new Set()
+  /** @type {Map<string, Set<string>>} */
+  const listingReports = new Map()
 
   function load() {
     try {
@@ -112,20 +155,21 @@ function createJsonStore(filePath) {
       const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'))
       const arr = Array.isArray(raw?.listings) ? raw.listings : []
       for (const row of arr) {
-        if (row?.id) listings.set(row.id, row)
+        if (row?.id) {
+          listings.set(row.id, {
+            ...row,
+            intent: row.intent === 'seek' ? 'seek' : 'host',
+            voiceChannelUrl: row.voiceChannelUrl || null,
+            reportCount: Number(row.reportCount) || 0,
+            hidden: Boolean(row.hidden),
+          })
+        }
       }
       const guilds =
         raw?.discordGuilds && typeof raw.discordGuilds === 'object' ? raw.discordGuilds : {}
       for (const [guildId, g] of Object.entries(guilds)) {
         if (g && typeof g === 'object' && g.channelId) {
-          discordGuilds.set(guildId, {
-            guildId,
-            channelId: String(g.channelId),
-            webhookUrl: g.webhookUrl ? String(g.webhookUrl) : null,
-            configuredBy: g.configuredBy ? String(g.configuredBy) : null,
-            configuredAt: g.configuredAt || new Date().toISOString(),
-            membersOnly: Boolean(g.membersOnly),
-          })
+          discordGuilds.set(guildId, normalizeGuildRow(guildId, g))
         }
       }
       const igns =
@@ -136,6 +180,9 @@ function createJsonStore(filePath) {
         if (typeof ign === 'string' && ign.trim()) {
           discordUserIgns.set(uid, ign.trim().slice(0, 24))
         }
+      }
+      for (const id of Array.isArray(raw?.blockedClients) ? raw.blockedClients : []) {
+        if (typeof id === 'string' && id.trim()) blockedClients.add(id.trim())
       }
     } catch {
       // ignore corrupt
@@ -152,6 +199,7 @@ function createJsonStore(filePath) {
           [...discordGuilds.entries()].map(([id, g]) => [id, g]),
         ),
         discordUserIgns: Object.fromEntries([...discordUserIgns.entries()]),
+        blockedClients: [...blockedClients],
       },
       null,
       0,
@@ -205,17 +253,31 @@ function createJsonStore(filePath) {
     },
     upsertDiscordGuild(row) {
       const prev = discordGuilds.get(row.guildId)
-      discordGuilds.set(row.guildId, {
-        guildId: row.guildId,
-        channelId: row.channelId,
-        webhookUrl: row.webhookUrl || null,
-        configuredBy: row.configuredBy || null,
-        configuredAt: new Date().toISOString(),
-        membersOnly:
-          typeof row.membersOnly === 'boolean'
-            ? row.membersOnly
-            : Boolean(prev?.membersOnly),
-      })
+      discordGuilds.set(
+        row.guildId,
+        normalizeGuildRow(row.guildId, {
+          channelId: row.channelId,
+          webhookUrl: row.webhookUrl !== undefined ? row.webhookUrl : prev?.webhookUrl,
+          configuredBy: row.configuredBy !== undefined ? row.configuredBy : prev?.configuredBy,
+          configuredAt: new Date().toISOString(),
+          membersOnly:
+            typeof row.membersOnly === 'boolean'
+              ? row.membersOnly
+              : Boolean(prev?.membersOnly),
+          activityAllowlist:
+            row.activityAllowlist !== undefined
+              ? row.activityAllowlist
+              : prev?.activityAllowlist,
+          regionAllowlist:
+            row.regionAllowlist !== undefined ? row.regionAllowlist : prev?.regionAllowlist,
+          platformAllowlist:
+            row.platformAllowlist !== undefined
+              ? row.platformAllowlist
+              : prev?.platformAllowlist,
+          pingRoleId:
+            row.pingRoleId !== undefined ? row.pingRoleId : prev?.pingRoleId,
+        }),
+      )
       save()
     },
     removeDiscordGuild(guildId) {
@@ -242,6 +304,44 @@ function createJsonStore(filePath) {
         if (String(linked).trim().toLowerCase() === needle) out.push(uid)
       }
       return out
+    },
+    isClientBlocked(clientId) {
+      return blockedClients.has(String(clientId || '').trim())
+    },
+    blockClient(clientId) {
+      const id = String(clientId || '').trim()
+      if (!id) return
+      blockedClients.add(id)
+      save()
+    },
+    reportListing(listingId, reporterClientId, reason = '') {
+      const row = listings.get(listingId)
+      if (!row) return { ok: false, error: 'Listing not found' }
+      const reporter = String(reporterClientId || '').trim()
+      if (!reporter) return { ok: false, error: 'clientId required' }
+      if (row.members?.some((m) => m.clientId === reporter)) {
+        return { ok: false, error: 'Cannot report your own squad' }
+      }
+      let set = listingReports.get(listingId)
+      if (!set) {
+        set = new Set()
+        listingReports.set(listingId, set)
+      }
+      if (set.has(reporter)) {
+        return { ok: true, reportCount: row.reportCount || set.size, hidden: Boolean(row.hidden) }
+      }
+      set.add(reporter)
+      row.reportCount = set.size
+      row.reportNote = String(reason || '').slice(0, 120)
+      if (set.size >= 3) {
+        row.hidden = true
+        // Soft-block repeat offenders by host clientId
+        const host = row.members?.find((m) => m.isHost)
+        if (host?.clientId) blockedClients.add(host.clientId)
+      }
+      listings.set(listingId, row)
+      save()
+      return { ok: true, reportCount: row.reportCount, hidden: Boolean(row.hidden) }
     },
   }
 }
@@ -279,6 +379,10 @@ function rowFromSqlite(listing, members) {
     steelPath: Boolean(listing.steel_path),
     missionHint: listing.mission_hint,
     slotsTotal: listing.slots_total,
+    intent: listing.intent === 'seek' ? 'seek' : 'host',
+    voiceChannelUrl: listing.voice_channel_url || null,
+    reportCount: Number(listing.report_count) || 0,
+    hidden: Boolean(listing.hidden),
     discordMessageId,
     discordPosts,
     members: members.map((m) => ({
@@ -310,7 +414,11 @@ const SCHEMA_SQL = `
     mission_hint TEXT,
     slots_total INTEGER NOT NULL,
     discord_message_id TEXT,
-    discord_posts TEXT
+    discord_posts TEXT,
+    intent TEXT NOT NULL DEFAULT 'host',
+    voice_channel_url TEXT,
+    report_count INTEGER NOT NULL DEFAULT 0,
+    hidden INTEGER NOT NULL DEFAULT 0
   );
   CREATE TABLE IF NOT EXISTS members (
     listing_id TEXT NOT NULL,
@@ -327,12 +435,28 @@ const SCHEMA_SQL = `
     webhook_url TEXT,
     configured_by TEXT,
     configured_at TEXT NOT NULL,
-    members_only INTEGER NOT NULL DEFAULT 0
+    members_only INTEGER NOT NULL DEFAULT 0,
+    activity_allowlist TEXT,
+    region_allowlist TEXT,
+    platform_allowlist TEXT,
+    ping_role_id TEXT
   );
   CREATE TABLE IF NOT EXISTS discord_user_profiles (
     discord_user_id TEXT PRIMARY KEY,
     ign TEXT NOT NULL,
     updated_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS blocked_clients (
+    client_id TEXT PRIMARY KEY,
+    reason TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS listing_reports (
+    listing_id TEXT NOT NULL,
+    reporter_client_id TEXT NOT NULL,
+    reason TEXT,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (listing_id, reporter_client_id)
   );
   CREATE INDEX IF NOT EXISTS idx_listings_expires ON listings(expires_at);
   CREATE INDEX IF NOT EXISTS idx_listings_created ON listings(created_at);
@@ -367,6 +491,18 @@ function openNodeSqlite(dbPath, DatabaseSync) {
   if (!listingCols.has('discord_posts')) {
     db.exec(`ALTER TABLE listings ADD COLUMN discord_posts TEXT`)
   }
+  if (!listingCols.has('intent')) {
+    db.exec(`ALTER TABLE listings ADD COLUMN intent TEXT NOT NULL DEFAULT 'host'`)
+  }
+  if (!listingCols.has('voice_channel_url')) {
+    db.exec(`ALTER TABLE listings ADD COLUMN voice_channel_url TEXT`)
+  }
+  if (!listingCols.has('report_count')) {
+    db.exec(`ALTER TABLE listings ADD COLUMN report_count INTEGER NOT NULL DEFAULT 0`)
+  }
+  if (!listingCols.has('hidden')) {
+    db.exec(`ALTER TABLE listings ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0`)
+  }
   db.exec(`
     CREATE TABLE IF NOT EXISTS discord_guild_settings (
       guild_id TEXT PRIMARY KEY,
@@ -374,7 +510,27 @@ function openNodeSqlite(dbPath, DatabaseSync) {
       webhook_url TEXT,
       configured_by TEXT,
       configured_at TEXT NOT NULL,
-      members_only INTEGER NOT NULL DEFAULT 0
+      members_only INTEGER NOT NULL DEFAULT 0,
+      activity_allowlist TEXT,
+      region_allowlist TEXT,
+      platform_allowlist TEXT,
+      ping_role_id TEXT
+    );
+  `)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS blocked_clients (
+      client_id TEXT PRIMARY KEY,
+      reason TEXT,
+      created_at TEXT NOT NULL
+    );
+  `)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS listing_reports (
+      listing_id TEXT NOT NULL,
+      reporter_client_id TEXT NOT NULL,
+      reason TEXT,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (listing_id, reporter_client_id)
     );
   `)
   const guildCols = new Set(
@@ -384,6 +540,18 @@ function openNodeSqlite(dbPath, DatabaseSync) {
     db.exec(
       `ALTER TABLE discord_guild_settings ADD COLUMN members_only INTEGER NOT NULL DEFAULT 0`,
     )
+  }
+  if (!guildCols.has('activity_allowlist')) {
+    db.exec(`ALTER TABLE discord_guild_settings ADD COLUMN activity_allowlist TEXT`)
+  }
+  if (!guildCols.has('region_allowlist')) {
+    db.exec(`ALTER TABLE discord_guild_settings ADD COLUMN region_allowlist TEXT`)
+  }
+  if (!guildCols.has('platform_allowlist')) {
+    db.exec(`ALTER TABLE discord_guild_settings ADD COLUMN platform_allowlist TEXT`)
+  }
+  if (!guildCols.has('ping_role_id')) {
+    db.exec(`ALTER TABLE discord_guild_settings ADD COLUMN ping_role_id TEXT`)
   }
   db.exec(`
     CREATE TABLE IF NOT EXISTS discord_user_profiles (
@@ -436,11 +604,11 @@ function openNodeSqlite(dbPath, DatabaseSync) {
           `INSERT INTO listings (
             id, created_at, expires_at, host_ign, host_token, platform, region, language,
             activity, title, notes, relic_key, refinement, share_type, steel_path, mission_hint,
-            slots_total, discord_message_id, discord_posts
+            slots_total, discord_message_id, discord_posts, intent, voice_channel_url, report_count, hidden
           ) VALUES (
             $id, $created_at, $expires_at, $host_ign, $host_token, $platform, $region, $language,
             $activity, $title, $notes, $relic_key, $refinement, $share_type, $steel_path, $mission_hint,
-            $slots_total, $discord_message_id, $discord_posts
+            $slots_total, $discord_message_id, $discord_posts, $intent, $voice_channel_url, $report_count, $hidden
           )`,
           {
             id: row.id,
@@ -465,6 +633,10 @@ function openNodeSqlite(dbPath, DatabaseSync) {
               row.discordPosts && Array.isArray(row.discordPosts) && row.discordPosts.length
                 ? JSON.stringify(row.discordPosts)
                 : null,
+            intent: row.intent === 'seek' ? 'seek' : 'host',
+            voice_channel_url: row.voiceChannelUrl || null,
+            report_count: Number(row.reportCount) || 0,
+            hidden: row.hidden ? 1 : 0,
           },
         )
         for (const m of row.members || []) {
@@ -490,28 +662,15 @@ function openNodeSqlite(dbPath, DatabaseSync) {
       run(`DELETE FROM listings WHERE id = $id`, { id })
     },
     listDiscordGuilds() {
-      return all(`SELECT * FROM discord_guild_settings ORDER BY configured_at ASC`).map((r) => ({
-        guildId: r.guild_id,
-        channelId: r.channel_id,
-        webhookUrl: r.webhook_url || null,
-        configuredBy: r.configured_by || null,
-        configuredAt: r.configured_at,
-        membersOnly: Boolean(r.members_only),
-      }))
+      return all(`SELECT * FROM discord_guild_settings ORDER BY configured_at ASC`).map((r) =>
+        mapGuildSqliteRow(r),
+      )
     },
     getDiscordGuild(guildId) {
       const r = getOne(`SELECT * FROM discord_guild_settings WHERE guild_id = $id`, {
         id: guildId,
       })
-      if (!r) return null
-      return {
-        guildId: r.guild_id,
-        channelId: r.channel_id,
-        webhookUrl: r.webhook_url || null,
-        configuredBy: r.configured_by || null,
-        configuredAt: r.configured_at,
-        membersOnly: Boolean(r.members_only),
-      }
+      return r ? mapGuildSqliteRow(r) : null
     },
     upsertDiscordGuild(row) {
       const prev = store.getDiscordGuild(row.guildId)
@@ -519,15 +678,42 @@ function openNodeSqlite(dbPath, DatabaseSync) {
         typeof row.membersOnly === 'boolean'
           ? row.membersOnly
           : Boolean(prev?.membersOnly)
+      const activityAllowlist =
+        row.activityAllowlist !== undefined
+          ? normalizeStringAllowlist(row.activityAllowlist)
+          : normalizeStringAllowlist(prev?.activityAllowlist)
+      const regionAllowlist =
+        row.regionAllowlist !== undefined
+          ? normalizeStringAllowlist(row.regionAllowlist)
+          : normalizeStringAllowlist(prev?.regionAllowlist)
+      const platformAllowlist =
+        row.platformAllowlist !== undefined
+          ? normalizeStringAllowlist(row.platformAllowlist)
+          : normalizeStringAllowlist(prev?.platformAllowlist)
+      const pingRoleId =
+        row.pingRoleId !== undefined
+          ? row.pingRoleId
+            ? String(row.pingRoleId)
+            : null
+          : prev?.pingRoleId || null
       run(
-        `INSERT INTO discord_guild_settings (guild_id, channel_id, webhook_url, configured_by, configured_at, members_only)
-         VALUES ($guild_id, $channel_id, $webhook_url, $configured_by, $configured_at, $members_only)
-         ON CONFLICT(guild_id) DO UPDATE SET
-           channel_id = excluded.channel_id,
-           webhook_url = excluded.webhook_url,
-           configured_by = excluded.configured_by,
-           configured_at = excluded.configured_at,
-           members_only = excluded.members_only`,
+        `INSERT INTO discord_guild_settings (
+          guild_id, channel_id, webhook_url, configured_by, configured_at, members_only,
+          activity_allowlist, region_allowlist, platform_allowlist, ping_role_id
+        ) VALUES (
+          $guild_id, $channel_id, $webhook_url, $configured_by, $configured_at, $members_only,
+          $activity_allowlist, $region_allowlist, $platform_allowlist, $ping_role_id
+        )
+        ON CONFLICT(guild_id) DO UPDATE SET
+          channel_id = excluded.channel_id,
+          webhook_url = excluded.webhook_url,
+          configured_by = excluded.configured_by,
+          configured_at = excluded.configured_at,
+          members_only = excluded.members_only,
+          activity_allowlist = excluded.activity_allowlist,
+          region_allowlist = excluded.region_allowlist,
+          platform_allowlist = excluded.platform_allowlist,
+          ping_role_id = excluded.ping_role_id`,
         {
           guild_id: row.guildId,
           channel_id: row.channelId,
@@ -535,6 +721,14 @@ function openNodeSqlite(dbPath, DatabaseSync) {
           configured_by: row.configuredBy || null,
           configured_at: new Date().toISOString(),
           members_only: membersOnly ? 1 : 0,
+          activity_allowlist: activityAllowlist.length
+            ? JSON.stringify(activityAllowlist)
+            : null,
+          region_allowlist: regionAllowlist.length ? JSON.stringify(regionAllowlist) : null,
+          platform_allowlist: platformAllowlist.length
+            ? JSON.stringify(platformAllowlist)
+            : null,
+          ping_role_id: pingRoleId,
         },
       )
     },
@@ -576,10 +770,107 @@ function openNodeSqlite(dbPath, DatabaseSync) {
         .filter((r) => String(r.ign || '').trim().toLowerCase() === needle)
         .map((r) => String(r.discord_user_id))
     },
+    isClientBlocked(clientId) {
+      const id = String(clientId || '').trim()
+      if (!id) return false
+      return Boolean(
+        getOne(`SELECT client_id FROM blocked_clients WHERE client_id = $id`, { id }),
+      )
+    },
+    blockClient(clientId, reason = '') {
+      const id = String(clientId || '').trim()
+      if (!id) return
+      run(
+        `INSERT INTO blocked_clients (client_id, reason, created_at)
+         VALUES ($id, $reason, $created_at)
+         ON CONFLICT(client_id) DO UPDATE SET reason = excluded.reason`,
+        {
+          id,
+          reason: String(reason || '').slice(0, 120),
+          created_at: new Date().toISOString(),
+        },
+      )
+    },
+    reportListing(listingId, reporterClientId, reason = '') {
+      const row = store.get(listingId)
+      if (!row) return { ok: false, error: 'Listing not found' }
+      const reporter = String(reporterClientId || '').trim()
+      if (!reporter) return { ok: false, error: 'clientId required' }
+      if (row.members?.some((m) => m.clientId === reporter)) {
+        return { ok: false, error: 'Cannot report your own squad' }
+      }
+      const existing = getOne(
+        `SELECT 1 AS n FROM listing_reports WHERE listing_id = $lid AND reporter_client_id = $rid`,
+        { lid: listingId, rid: reporter },
+      )
+      if (!existing) {
+        run(
+          `INSERT INTO listing_reports (listing_id, reporter_client_id, reason, created_at)
+           VALUES ($lid, $rid, $reason, $created_at)`,
+          {
+            lid: listingId,
+            rid: reporter,
+            reason: String(reason || '').slice(0, 120),
+            created_at: new Date().toISOString(),
+          },
+        )
+      }
+      const countRow = getOne(
+        `SELECT COUNT(*) AS n FROM listing_reports WHERE listing_id = $lid`,
+        { lid: listingId },
+      )
+      const reportCount = Number(countRow?.n) || 0
+      row.reportCount = reportCount
+      if (reportCount >= 3) {
+        row.hidden = true
+        const host = row.members?.find((m) => m.isHost)
+        if (host?.clientId) store.blockClient(host.clientId, 'auto: reports>=3')
+      }
+      store.upsert(row)
+      return { ok: true, reportCount, hidden: Boolean(row.hidden) }
+    },
     close() {
       db.close()
     },
   }
+
+  function mapGuildSqliteRow(r) {
+    let activityAllowlist = []
+    let regionAllowlist = []
+    let platformAllowlist = []
+    try {
+      activityAllowlist = r.activity_allowlist
+        ? JSON.parse(String(r.activity_allowlist))
+        : []
+    } catch {
+      activityAllowlist = []
+    }
+    try {
+      regionAllowlist = r.region_allowlist ? JSON.parse(String(r.region_allowlist)) : []
+    } catch {
+      regionAllowlist = []
+    }
+    try {
+      platformAllowlist = r.platform_allowlist
+        ? JSON.parse(String(r.platform_allowlist))
+        : []
+    } catch {
+      platformAllowlist = []
+    }
+    return {
+      guildId: r.guild_id,
+      channelId: r.channel_id,
+      webhookUrl: r.webhook_url || null,
+      configuredBy: r.configured_by || null,
+      configuredAt: r.configured_at,
+      membersOnly: Boolean(r.members_only),
+      activityAllowlist: normalizeStringAllowlist(activityAllowlist),
+      regionAllowlist: normalizeStringAllowlist(regionAllowlist),
+      platformAllowlist: normalizeStringAllowlist(platformAllowlist),
+      pingRoleId: r.ping_role_id || null,
+    }
+  }
+
   return store
 }
 

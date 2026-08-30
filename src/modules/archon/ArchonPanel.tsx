@@ -8,9 +8,10 @@ type Props = {
   archonHunt: ArchonHuntInfo | null
   opacity?: number
   compact?: boolean
+  onPostLfg?: (missionHint: string, title: string) => void
 }
 
-export function ArchonPanel({ archonHunt, opacity, compact }: Props) {
+export function ArchonPanel({ archonHunt, opacity, compact, onPostLfg }: Props) {
   const now = useNow()
   return (
     <Panel
@@ -34,6 +35,23 @@ export function ArchonPanel({ archonHunt, opacity, compact }: Props) {
             <span className="mod-stat__label">Resets</span>
             <span className="mod-stat__value">{formatCountdown(archonHunt.expiry, now)}</span>
           </div>
+          {onPostLfg && !compact ? (
+            <button
+              type="button"
+              className="btn ghost"
+              style={{ marginTop: 8 }}
+              onClick={() =>
+                onPostLfg(
+                  archonHunt.missions[0]
+                    ? `${archonHunt.missions[0].type} · ${archonHunt.missions[0].node}`
+                    : archonHunt.boss,
+                  `Archon Hunt · ${archonHunt.boss}`,
+                )
+              }
+            >
+              Post LFG
+            </button>
+          ) : null}
           <ul className="mod-list">
             {archonHunt.missions.slice(0, compact ? 3 : 5).map((m, i) => (
               <li key={`${m.node}-${i}`} className="mod-row">

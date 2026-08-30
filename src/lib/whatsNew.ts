@@ -425,6 +425,14 @@ export const WHATS_NEW: Record<string, string[]> = {
     'Website Terms of Service + Privacy Policy for Discord bot linking',
     'Website Report a bug form (prefilled GitHub Issue)',
   ],
+  '0.9.92': [
+    'LFG: Host / Looking for host intent, voice channel link, and report listings',
+    'LFG live updates over the hub event stream (faster board refresh)',
+    'Discord bot: /lfg post, region/platform filters, role ping, /lfg help',
+    'Overlay LFG mini panel + Post LFG from Fissures, Arbitration, Archon, and Deep Archimedea',
+    'Foundry: Buy on market for missing craft materials',
+    'Website hub status page + clearer community hub rate-limit fallback',
+  ],
 }
 
 export function getWhatsNewBullets(version: string): string[] {

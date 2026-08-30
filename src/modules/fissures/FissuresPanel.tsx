@@ -15,6 +15,7 @@ type Props = {
   sort?: FissureSort
   opacity?: number
   compact?: boolean
+  onPostLfg?: (missionHint: string, title: string) => void
 }
 
 function matchesPathMode(f: FissureInfo, pathMode: FissurePathMode): boolean {
@@ -31,6 +32,7 @@ export function FissuresPanel({
   sort = 'eta',
   opacity,
   compact,
+  onPostLfg,
 }: Props) {
   const now = useNow()
   const filtered = fissures
@@ -76,7 +78,24 @@ export function FissuresPanel({
                 {f.enemy}
               </div>
             </div>
-            <div className="mod-row__value">{formatCountdown(f.expiry, now)}</div>
+            <div className="mod-row__value">
+              {formatCountdown(f.expiry, now)}
+              {onPostLfg && !compact ? (
+                <button
+                  type="button"
+                  className="btn ghost"
+                  style={{ marginLeft: 8 }}
+                  onClick={() =>
+                    onPostLfg(
+                      `${f.missionType} · ${f.node}`,
+                      `${f.tier}${f.isHard ? ' SP' : ''} Fissure`,
+                    )
+                  }
+                >
+                  Post LFG
+                </button>
+              ) : null}
+            </div>
           </li>
         ))}
         {filtered.length === 0 ? (

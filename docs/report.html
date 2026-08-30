@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Report a bug — Everything Warframe</title>
+    <meta
+      name="description"
+      content="Report a bug for Everything Warframe. Opens a prefilled GitHub Issue — you review and submit."
+    />
+    <link rel="canonical" href="https://hoeslovevid.github.io/Warframe-Companion-Helper/report.html" />
+    <link rel="icon" href="assets/tray.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700&family=Sora:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="legal.css" />
+  </head>
+  <body>
+    <header class="site-nav">
+      <a class="nav-brand" href="index.html">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>Everything Warframe</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a class="nav-link-secondary" href="index.html#faq">FAQ</a>
+        <a class="nav-link-secondary" href="terms.html">Terms</a>
+        <a class="nav-link-secondary" href="privacy.html">Privacy</a>
+        <a
+          class="nav-ext"
+          href="https://github.com/hoeslovevid/everything-warframe/issues"
+          target="_blank"
+          rel="noreferrer"
+          >All issues</a
+        >
+        <a class="btn primary nav-cta" href="index.html#download">Download</a>
+      </nav>
+    </header>
+
+    <main class="page-shell">
+      <p class="brand-line">Support</p>
+      <h1>Report a bug</h1>
+      <p class="page-meta">Opens a prefilled GitHub Issue — nothing is posted until you submit.</p>
+      <p class="page-lede">
+        Describe what went wrong. On submit we open GitHub with your text filled in. Sign in to
+        GitHub if needed, attach screenshots, then create the issue. Prefer the in-app
+        <strong>Help → Report a bug</strong> flow when you can — it can include local diagnostics.
+      </p>
+
+      <form class="report-form" id="report-form" novalidate>
+        <label>
+          Title <span class="req" aria-hidden="true">*</span>
+          <input
+            id="report-title"
+            name="title"
+            type="text"
+            maxlength="120"
+            required
+            placeholder="Short summary (e.g. Relic OCR reads junk on reward screen)"
+            autocomplete="off"
+          />
+        </label>
+
+        <label>
+          Area
+          <select id="report-category" name="category">
+            <option value="relics">Relic OCR / rewards</option>
+            <option value="rivens">Riven grader</option>
+            <option value="overlay">Overlay / layout</option>
+            <option value="inventory">Inventory / foundry</option>
+            <option value="lfg">LFG / Discord bot</option>
+            <option value="linux">Linux / Proton</option>
+            <option value="website">Website / downloads</option>
+            <option value="other" selected>Other</option>
+          </select>
+        </label>
+
+        <label>
+          Platform
+          <select id="report-platform" name="platform">
+            <option value="windows" selected>Windows</option>
+            <option value="linux">Linux</option>
+            <option value="both">Both / unsure</option>
+            <option value="n/a">N/A (website / Discord only)</option>
+          </select>
+        </label>
+
+        <label>
+          App version (optional)
+          <input
+            id="report-version"
+            name="version"
+            type="text"
+            maxlength="32"
+            placeholder="e.g. 0.9.90"
+            autocomplete="off"
+          />
+        </label>
+
+        <label>
+          What happened? <span class="req" aria-hidden="true">*</span>
+          <textarea
+            id="report-description"
+            name="description"
+            required
+            placeholder="Steps to reproduce, what you expected, what you saw. Redact personal paths if needed."
+          ></textarea>
+        </label>
+
+        <div class="report-actions">
+          <button type="submit" class="btn primary" id="report-submit">Open GitHub Issue</button>
+          <a
+            class="btn ghost"
+            href="https://github.com/hoeslovevid/everything-warframe/issues"
+            target="_blank"
+            rel="noreferrer"
+            >Browse existing issues</a
+          >
+        </div>
+        <p class="report-status" id="report-status" role="status" aria-live="polite" hidden></p>
+      </form>
+
+      <p class="report-hint">
+        By opening an issue you agree GitHub’s terms apply to that content. Do not paste tokens,
+        passwords, or webhook URLs. See our
+        <a href="privacy.html">Privacy Policy</a> and
+        <a href="terms.html">Terms of Service</a>.
+      </p>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <p>
+          <strong>Everything Warframe</strong> — unofficial fan project, not affiliated with Digital
+          Extremes. MIT licensed.
+        </p>
+        <p class="footer-links">
+          <a href="terms.html">Terms</a>
+          <a href="privacy.html">Privacy</a>
+          <a href="report.html">Report a bug</a>
+          <a href="index.html#discord">Add Discord bot</a>
+          <a href="https://github.com/hoeslovevid/everything-warframe" target="_blank" rel="noreferrer"
+            >Source</a
+          >
+        </p>
+      </div>
+    </footer>
+
+    <script src="report.js"></script>
+  </body>
+</html>

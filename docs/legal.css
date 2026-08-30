@@ -1,0 +1,216 @@
+/* Legal / report pages — extends styles.css */
+.page-shell {
+  padding: 112px 24px 72px;
+  max-width: var(--max);
+  margin: 0 auto;
+}
+
+.page-shell .brand-line {
+  font-family: var(--vl-font-display);
+  font-size: var(--vl-type-brand);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vl-premium);
+  margin: 0 0 10px;
+}
+
+.page-shell h1 {
+  font-family: var(--vl-font-display);
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin: 0 0 12px;
+  color: var(--vl-frost);
+}
+
+.page-meta {
+  color: var(--vl-mist);
+  font-size: var(--vl-type-meta);
+  margin: 0 0 28px;
+}
+
+.page-lede {
+  font-size: 1.05rem;
+  line-height: 1.55;
+  color: var(--vl-frost);
+  max-width: 42rem;
+  margin: 0 0 36px;
+}
+
+.legal-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: 0 0 40px;
+  padding: 16px 18px;
+  border: 1px solid var(--vl-surface-border);
+  border-radius: var(--vl-radius-lg);
+  background: var(--vl-surface);
+}
+
+.legal-toc a {
+  color: var(--vl-teal-bright);
+  text-decoration: none;
+  font-size: var(--vl-type-meta);
+}
+
+.legal-toc a:hover {
+  text-decoration: underline;
+}
+
+.legal-prose {
+  max-width: 46rem;
+}
+
+.legal-prose h2 {
+  font-family: var(--vl-font-display);
+  font-size: 1.05rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vl-frost);
+  margin: 40px 0 12px;
+  scroll-margin-top: 88px;
+}
+
+.legal-prose h3 {
+  font-size: 0.98rem;
+  color: var(--vl-gold-soft);
+  margin: 22px 0 8px;
+}
+
+.legal-prose p,
+.legal-prose li {
+  color: var(--vl-mist);
+  font-size: var(--vl-type-body);
+  line-height: 1.65;
+}
+
+.legal-prose p {
+  margin: 0 0 14px;
+}
+
+.legal-prose ul,
+.legal-prose ol {
+  margin: 0 0 16px;
+  padding-left: 1.25rem;
+}
+
+.legal-prose li {
+  margin-bottom: 6px;
+}
+
+.legal-prose strong {
+  color: var(--vl-frost);
+  font-weight: 600;
+}
+
+.legal-prose a {
+  color: var(--vl-teal-bright);
+}
+
+.legal-prose code {
+  font-size: 0.86em;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: var(--vl-input-bg);
+  border: 1px solid var(--vl-input-border);
+  color: var(--vl-frost);
+}
+
+.legal-callout {
+  margin: 20px 0 28px;
+  padding: 14px 16px;
+  border-left: 3px solid var(--vl-teal);
+  border-radius: 0 var(--vl-radius) var(--vl-radius) 0;
+  background: var(--vl-teal-dim);
+  color: var(--vl-frost);
+  font-size: var(--vl-type-body);
+  line-height: 1.55;
+}
+
+.legal-nav-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 48px;
+  padding-top: 24px;
+  border-top: 1px solid var(--vl-surface-border);
+}
+
+/* Report form */
+.report-form {
+  max-width: 36rem;
+  display: grid;
+  gap: 16px;
+  margin: 0 0 28px;
+  padding: 22px 20px;
+  border: 1px solid var(--vl-surface-border);
+  border-radius: var(--vl-radius-lg);
+  background: var(--vl-surface);
+}
+
+.report-form label {
+  display: grid;
+  gap: 6px;
+  font-size: var(--vl-type-meta);
+  color: var(--vl-mist);
+}
+
+.report-form label span.req {
+  color: var(--vl-danger);
+}
+
+.report-form input,
+.report-form select,
+.report-form textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--vl-radius-sm);
+  border: 1px solid var(--vl-input-border);
+  background: var(--vl-input-bg);
+  color: var(--vl-frost);
+  font: inherit;
+  font-size: var(--vl-type-body);
+}
+
+.report-form textarea {
+  resize: vertical;
+  min-height: 140px;
+}
+
+.report-form input:focus,
+.report-form select:focus,
+.report-form textarea:focus {
+  outline: 2px solid rgba(74, 181, 172, 0.35);
+  outline-offset: 1px;
+}
+
+.report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.report-status {
+  margin: 0;
+  font-size: var(--vl-type-meta);
+  color: var(--vl-warn);
+}
+
+.report-status.is-ok {
+  color: var(--vl-ok);
+}
+
+.report-hint {
+  max-width: 36rem;
+  color: var(--vl-mist);
+  font-size: var(--vl-type-meta);
+  line-height: 1.55;
+}
+
+@media (max-width: 720px) {
+  .page-shell {
+    padding: 96px 18px 56px;
+  }
+}

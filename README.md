@@ -4,7 +4,8 @@ Companion + transparent overlay for Warframe on **Windows** and **Linux (Steam/P
 
 **Website:** [hoeslovevid.github.io/Warframe-Companion-Helper](https://hoeslovevid.github.io/Warframe-Companion-Helper/)  
 **Downloads:** [GitHub Releases](https://github.com/hoeslovevid/everything-warframe/releases)  
-**LFG Discord bot:** [Add to your server](https://discord.com/oauth2/authorize?client_id=1543118817654476840&permissions=536955880&scope=bot%20applications.commands)
+**LFG Discord bot:** [Add to your server](https://discord.com/oauth2/authorize?client_id=1543118817654476840&permissions=536955880&scope=bot%20applications.commands)  
+**Legal:** [Terms](https://hoeslovevid.github.io/Warframe-Companion-Helper/terms.html) · [Privacy](https://hoeslovevid.github.io/Warframe-Companion-Helper/privacy.html) · [Report a bug](https://hoeslovevid.github.io/Warframe-Companion-Helper/report.html)
 
 ## Requirements
 

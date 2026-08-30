@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy Policy — Everything Warframe</title>
+    <meta
+      name="description"
+      content="Privacy Policy for Everything Warframe: desktop app, website, LFG hub, and Discord bot — what we collect, retain, and share."
+    />
+    <link
+      rel="canonical"
+      href="https://hoeslovevid.github.io/Warframe-Companion-Helper/privacy.html"
+    />
+    <link rel="icon" href="assets/tray.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700&family=Sora:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="legal.css" />
+  </head>
+  <body>
+    <header class="site-nav">
+      <a class="nav-brand" href="index.html">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>Everything Warframe</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a class="nav-link-secondary" href="index.html#features">Features</a>
+        <a class="nav-link-secondary" href="terms.html">Terms</a>
+        <a class="nav-link-secondary" href="report.html">Report a bug</a>
+        <a
+          class="nav-ext"
+          href="https://discord.com/oauth2/authorize?client_id=1543118817654476840&amp;permissions=536955880&amp;scope=bot%20applications.commands"
+          target="_blank"
+          rel="noreferrer"
+          >Add Discord bot</a
+        >
+        <a class="btn primary nav-cta" href="index.html#download">Download</a>
+      </nav>
+    </header>
+
+    <main class="page-shell">
+      <p class="brand-line">Everything Warframe</p>
+      <h1>Privacy Policy</h1>
+      <p class="page-meta">
+        Effective date: <strong>29 August 2026</strong> · Last updated:
+        <strong>29 August 2026</strong>
+      </p>
+      <p class="page-lede">
+        This Policy explains what information Everything Warframe processes when you use the desktop
+        companion, this website, the LFG hub API, and the Discord LFG bot — and what we
+        <strong>do not</strong> collect. It is written to be suitable for Discord’s application
+        linking / verification privacy URL requirements.
+      </p>
+
+      <nav class="legal-toc" aria-label="On this page">
+        <a href="#summary">Summary</a>
+        <a href="#controller">Controller</a>
+        <a href="#desktop">Desktop app</a>
+        <a href="#website">Website</a>
+        <a href="#hub">LFG hub</a>
+        <a href="#discord">Discord bot</a>
+        <a href="#purposes">Purposes</a>
+        <a href="#sharing">Sharing</a>
+        <a href="#retention">Retention</a>
+        <a href="#security">Security</a>
+        <a href="#children">Children</a>
+        <a href="#rights">Your rights</a>
+        <a href="#international">International</a>
+        <a href="#changes">Changes</a>
+        <a href="#contact">Contact</a>
+      </nav>
+
+      <article class="legal-prose">
+        <div class="legal-callout">
+          <strong>Short version:</strong> The companion keeps OCR, inventory, and settings on your
+          PC by default. The Discord bot and public LFG hub only store what is needed for squad
+          listings and server setup (Discord IDs, optional linked IGN, guild channel config). We do
+          not sell personal data. Bug reports are sent only when <em>you</em> open GitHub.
+        </div>
+
+        <h2 id="summary">1. Privacy summary</h2>
+        <ul>
+          <li>
+            <strong>No Everything Warframe account</strong> and no advertising trackers on this
+            static GitHub Pages site.
+          </li>
+          <li>
+            <strong>Desktop:</strong> screen capture and OCR run locally; inventory stays local
+            unless you export it yourself.
+          </li>
+          <li>
+            <strong>Discord bot:</strong> processes Discord user/guild/channel/message IDs,
+            interaction payloads, and optional Warframe IGN you link with <code>/lfg link</code>.
+          </li>
+          <li>
+            <strong>LFG hub:</strong> stores open squad listings (host IGN, platform, mission text,
+            roster client IDs, expiry) until they expire or are closed.
+          </li>
+          <li>
+            <strong>Updates:</strong> the app may check GitHub Releases for new versions (standard
+            HTTP request to GitHub).
+          </li>
+        </ul>
+
+        <h2 id="controller">2. Who is responsible</h2>
+        <p>
+          For hosted components operated by the project (public LFG hub, Discord bot application,
+          this website), the project maintainer of
+          <a href="https://github.com/hoeslovevid/everything-warframe" target="_blank" rel="noreferrer"
+            >hoeslovevid/everything-warframe</a
+          >
+          is the data controller for the limited server-side data described below. If you
+          <strong>self-host</strong> the LFG API or run your own Discord webhook, you are the
+          controller for that deployment.
+        </p>
+        <p>
+          Discord Inc. is an independent controller for data processed on Discord’s platform under
+          Discord’s own Privacy Policy. Digital Extremes is independent for Warframe account data —
+          we do not receive your Warframe password or official account credentials.
+        </p>
+
+        <h2 id="desktop">3. Desktop companion (local-first)</h2>
+        <h3>3.1 Data that typically stays on your device</h3>
+        <ul>
+          <li>App settings, layout anchors, hotkeys, theme, module toggles;</li>
+          <li>Cached worldstate / catalog data used for offline-friendly UI;</li>
+          <li>Optional inventory index derived from local helper output or import files;</li>
+          <li>OCR crops / debug folders if you enable debugging;</li>
+          <li>Optional crash log file if you opt in to local crash reporting;</li>
+          <li>Optional personal Discord webhook URL (stored locally; not sent to the LFG hub).</li>
+        </ul>
+        <h3>3.2 Screen capture &amp; OCR</h3>
+        <p>
+          Relic and riven features capture regions of your screen (or a persistent capture stream)
+          and run OCR <strong>on your device</strong> to read reward or riven text. Captures are not
+          uploaded to Everything Warframe servers for those features. You control OS screen-share
+          permissions (especially on Linux/Wayland).
+        </p>
+        <h3>3.3 Network calls the app may make</h3>
+        <ul>
+          <li>Public Warframe worldstate / item catalog providers;</li>
+          <li>Optional warframe.market or price helpers you use;</li>
+          <li>GitHub Releases for auto-update checks;</li>
+          <li>Your configured LFG hub URL (default community hub or <code>local</code> / custom);</li>
+          <li>Optional personal Discord webhook you paste in settings;</li>
+          <li>GitHub Issues when you choose Report a bug / crash prompt (browser opens; you submit).</li>
+        </ul>
+        <p>
+          We do not operate a telemetry backend that silently phones home with gameplay or OCR
+          images.
+        </p>
+
+        <h2 id="website">4. This website (GitHub Pages)</h2>
+        <p>
+          The site is static HTML/CSS/JS. We do not run our own analytics cookies. GitHub Pages /
+          GitHub may process standard server logs (IP address, user agent, timestamps) under
+          GitHub’s privacy terms when you load pages or assets. The download buttons fetch the
+          latest release metadata from GitHub’s public API in your browser.
+        </p>
+        <p>
+          The <a href="report.html">Report a bug</a> page builds a GitHub Issue URL in your browser
+          and opens it — the description you type is only sent when you submit on GitHub while
+          signed in.
+        </p>
+
+        <h2 id="hub">5. LFG hub API (community or self-hosted)</h2>
+        <p>When you use a networked hub (not pure local mode), listings may include:</p>
+        <ul>
+          <li>Host Warframe IGN and optional title / mission / relic / notes text you enter;</li>
+          <li>Platform, region, language, slot counts;</li>
+          <li>
+            Member roster entries (IGN + opaque <code>clientId</code>; Discord joins use
+            <code>discord:&lt;userId&gt;</code>);
+          </li>
+          <li>Created / expiry timestamps; host token for edit/delete (secret to the host client);</li>
+          <li>
+            Discord message references (<code>discordMessageId</code> / per-guild posts) so embeds
+            can be updated or closed.
+          </li>
+        </ul>
+        <p>
+          Expired listings are purged on a schedule. Closed squads are removed and related Discord
+          messages may be edited/deleted by the bot.
+        </p>
+
+        <h2 id="discord">6. Discord LFG bot — detailed processing</h2>
+        <p>
+          Discord application client ID: <code>1543118817654476840</code>. Bot invite (user-chosen
+          server):
+          <a
+            href="https://discord.com/oauth2/authorize?client_id=1543118817654476840&amp;permissions=536955880&amp;scope=bot%20applications.commands"
+            target="_blank"
+            rel="noreferrer"
+            >Add to Discord</a
+          >.
+        </p>
+        <h3>6.1 Permissions requested</h3>
+        <p>
+          Typical permissions: Send Messages, Embed Links, Read Message History, Manage Webhooks
+          (for optional channel webhook fallback). Scopes: <code>bot</code> and
+          <code>applications.commands</code>. No privileged Gateway intents (e.g. Server Members
+          Intent) are required for individual <code>guild.members.fetch(userId)</code> checks used by
+          members-only announce.
+        </p>
+        <h3>6.2 Categories of Discord-related data</h3>
+        <ul>
+          <li>
+            <strong>Guild settings:</strong> guild ID, announce channel ID, optional webhook URL,
+            configuring Discord user ID, configured-at time, <code>members_only</code> flag.
+          </li>
+          <li>
+            <strong>User profiles (optional):</strong> Discord user ID ↔ Warframe IGN from
+            <code>/lfg link</code> (and clearable via <code>/lfg unlink</code>).
+          </li>
+          <li>
+            <strong>Interactions:</strong> slash commands and button clicks (Join, Leave, Whisper)
+            including Discord user ID, username display as provided by Discord, and modal IGN input
+            if not linked.
+          </li>
+          <li>
+            <strong>Messages:</strong> message IDs of bot-posted LFG embeds for live roster edits and
+            cleanup.
+          </li>
+          <li>
+            <strong>Membership check:</strong> for members-only guilds, whether a Discord user ID
+            linked to the host IGN is currently a member of that guild (boolean outcome; used to
+            decide whether to announce).
+          </li>
+        </ul>
+        <h3>6.3 What the bot does <em>not</em> do</h3>
+        <ul>
+          <li>Does not read general channel history beyond what Discord provides for its own messages / interactions;</li>
+          <li>Does not scrape DMs;</li>
+          <li>Does not sell Discord data;</li>
+          <li>Does not require email or phone beyond what Discord already has;</li>
+          <li>Does not store payment information.</li>
+        </ul>
+
+        <h2 id="purposes">7. Purposes &amp; legal bases</h2>
+        <p>We process information to:</p>
+        <ul>
+          <li>Provide LFG listing, Discord announce, Join/Leave/Whisper, and setup commands;</li>
+          <li>Enforce members-only announce and prevent posting to unconfigured guilds;</li>
+          <li>Operate and secure the public hub (abuse mitigation, expiry cleanup);</li>
+          <li>Distribute software updates and documentation;</li>
+          <li>Respond to issues you file on GitHub.</li>
+        </ul>
+        <p>
+          Depending on your region, bases may include performance of a contract (providing the
+          Service you request), legitimate interests (security, abuse prevention, open-source
+          project operations), and consent (optional crash opt-in, optional IGN link, optional
+          personal webhook).
+        </p>
+
+        <h2 id="sharing">8. Sharing &amp; processors</h2>
+        <ul>
+          <li>
+            <strong>Discord</strong> — interactions and messages are processed on Discord’s
+            infrastructure.
+          </li>
+          <li>
+            <strong>GitHub</strong> — hosting source, Releases, Pages, and Issues you create.
+          </li>
+          <li>
+            <strong>Hosting providers</strong> for the public LFG API (e.g. Railway or similar) act
+            as processors/infrastructure for listing storage.
+          </li>
+          <li>
+            <strong>Other users</strong> see LFG content you publish (IGN, mission text, roster) in
+            the companion and in Discord channels where the bot posts.
+          </li>
+        </ul>
+        <p>We do not sell personal information.</p>
+
+        <h2 id="retention">9. Retention</h2>
+        <ul>
+          <li>
+            <strong>LFG listings:</strong> until expiry, host delete, or purge job; Discord embeds
+            updated/removed accordingly.
+          </li>
+          <li>
+            <strong>Guild settings &amp; IGN links:</strong> until cleared via bot commands or
+            database reset by the hub operator.
+          </li>
+          <li>
+            <strong>Desktop local data:</strong> until you clear app data / uninstall; optional cloud
+            settings folder only if you configure it.
+          </li>
+          <li>
+            <strong>GitHub Issues:</strong> retained under GitHub’s policies for the repository.
+          </li>
+          <li>
+            <strong>Server logs:</strong> subject to host / GitHub retention defaults (typically short
+            operational windows).
+          </li>
+        </ul>
+
+        <h2 id="security">10. Security</h2>
+        <p>
+          We use industry-reasonable measures for hosted components (HTTPS, restricted bot token
+          storage in host env vars, least-privilege Discord permissions). No method is 100% secure.
+          Protect your Discord server permissions, webhook URLs, and host tokens. Never share
+          <code>DISCORD_BOT_TOKEN</code> publicly.
+        </p>
+
+        <h2 id="children">11. Children</h2>
+        <p>
+          The Service is not directed to children under 13 (or the minimum age required by Discord /
+          your country). Do not use the bot or hub if you are under the applicable age. We do not
+          knowingly collect children’s data; contact us to delete if you believe we have.
+        </p>
+
+        <h2 id="rights">12. Your rights &amp; choices</h2>
+        <p>Depending on your location, you may have rights to access, correct, delete, or restrict
+          processing of personal data, and to object or lodge a complaint with a supervisory
+          authority. Practical controls:</p>
+        <ul>
+          <li><code>/lfg unlink</code> — remove linked IGN;</li>
+          <li><code>/lfg clear</code> (admin) — remove guild announce config;</li>
+          <li>Leave / kick the bot from your Discord server;</li>
+          <li>Close or let expire your LFG listings; uninstall the app and delete userData;</li>
+          <li>
+            Open a
+            <a
+              href="https://github.com/hoeslovevid/everything-warframe/issues/new?labels=privacy&amp;title=Privacy%20request"
+              target="_blank"
+              rel="noreferrer"
+              >privacy request Issue</a
+            >
+            for hub/bot deletion help (include Discord user ID / guild ID as needed).
+          </li>
+        </ul>
+
+        <h2 id="international">13. International transfers</h2>
+        <p>
+          Hosting and Discord/GitHub infrastructure may process data in the United States or other
+          countries. If you access the Service from the EEA/UK/elsewhere, you understand these
+          transfers are inherent to using those platforms. Self-hosting keeps hub data in your chosen
+          region.
+        </p>
+
+        <h2 id="changes">14. Changes to this Policy</h2>
+        <p>
+          We may update this Policy by posting a new version here with an updated date. Material
+          Discord-related changes may also be called out in project docs or Releases. Continued use
+          after the effective date means you acknowledge the update.
+        </p>
+
+        <h2 id="contact">15. Contact</h2>
+        <p>
+          Privacy questions or requests:
+          <a
+            href="https://github.com/hoeslovevid/everything-warframe/issues/new?labels=privacy&amp;title=Privacy%20Policy%20question"
+            target="_blank"
+            rel="noreferrer"
+            >GitHub Issue (privacy)</a
+          >
+          · related:
+          <a href="terms.html">Terms of Service</a> ·
+          <a href="report.html">Report a bug</a>.
+        </p>
+        <p>
+          <strong>Discord Developer Portal URLs (for linking):</strong><br />
+          Privacy Policy:
+          <code>https://hoeslovevid.github.io/Warframe-Companion-Helper/privacy.html</code><br />
+          Terms of Service:
+          <code>https://hoeslovevid.github.io/Warframe-Companion-Helper/terms.html</code>
+        </p>
+
+        <div class="legal-nav-links">
+          <a class="btn ghost" href="terms.html">Terms of Service</a>
+          <a class="btn ghost" href="report.html">Report a bug</a>
+          <a class="btn primary" href="index.html">Back to home</a>
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <p>
+          <strong>Everything Warframe</strong> — unofficial fan project, not affiliated with Digital
+          Extremes. MIT licensed.
+        </p>
+        <p class="footer-links">
+          <a href="terms.html">Terms</a>
+          <a href="privacy.html">Privacy</a>
+          <a href="report.html">Report a bug</a>
+          <a href="index.html#discord">Add Discord bot</a>
+          <a href="https://github.com/hoeslovevid/everything-warframe" target="_blank" rel="noreferrer"
+            >Source</a
+          >
+        </p>
+      </div>
+    </footer>
+  </body>
+</html>

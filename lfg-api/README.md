@@ -90,6 +90,10 @@ Posts embeds with live slots/roster and buttons: **Join**, **Leave**, **Whisper*
 **Public invite (add to any server you manage):**  
 [Add Everything Warframe LFG bot](https://discord.com/oauth2/authorize?client_id=1543118817654476840&permissions=536955880&scope=bot%20applications.commands)
 
+**Discord Developer Portal — legal URLs:**
+- Terms of Service: https://hoeslovevid.github.io/Warframe-Companion-Helper/terms.html
+- Privacy Policy: https://hoeslovevid.github.io/Warframe-Companion-Helper/privacy.html
+
 After installing, an admin runs `/lfg setup` in that server (see below).
 
 Operator setup (hosting the hub):

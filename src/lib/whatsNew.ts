@@ -421,6 +421,10 @@ export const WHATS_NEW: Record<string, string[]> = {
   '0.9.90': [
     'Add LFG Discord bot invite on the website, Help, and LFG Advanced settings',
   ],
+  '0.9.91': [
+    'Website Terms of Service + Privacy Policy for Discord bot linking',
+    'Website Report a bug form (prefilled GitHub Issue)',
+  ],
 }
 
 export function getWhatsNewBullets(version: string): string[] {

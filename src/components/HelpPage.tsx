@@ -274,6 +274,32 @@ export function HelpPage({
               </a>{' '}
               (then <code>/lfg setup</code>)
             </li>
+            <li>
+              Terms / Privacy / web bug report:{' '}
+              <a
+                href="https://hoeslovevid.github.io/Warframe-Companion-Helper/terms.html"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Terms
+              </a>
+              {' · '}
+              <a
+                href="https://hoeslovevid.github.io/Warframe-Companion-Helper/privacy.html"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Privacy
+              </a>
+              {' · '}
+              <a
+                href="https://hoeslovevid.github.io/Warframe-Companion-Helper/report.html"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Report a bug
+              </a>
+            </li>
             <li>In-app updates: Settings → Updates</li>
           </ul>
         </div>

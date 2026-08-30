@@ -106,8 +106,11 @@ async function loadLatestRelease() {
     if (meta) {
       setText('meta-version', tag)
       setText('meta-date', published || '—')
-      setText('meta-size', size || '—')
-      setText('meta-size-linux', linuxSize || (linux ? '—' : 'Coming on next release'))
+      setText('meta-size', size ? `Win ${size}` : 'Win —')
+      setText(
+        'meta-size-linux',
+        linuxSize ? `Linux ${linuxSize}` : linux ? 'Linux —' : 'Linux soon',
+      )
       meta.hidden = false
     }
 
@@ -130,9 +133,16 @@ async function loadLatestRelease() {
 
 function setupReveal() {
   const nodes = document.querySelectorAll(
-    '.section-inner, .feature-block, .steps li, .trust-list li, .faq-item, .trust-bar__inner',
+    '.section-inner, .feature-row, .steps li, .trust-list li, .faq-item, .trust-bar__inner',
   )
-  nodes.forEach((el) => el.classList.add('reveal'))
+  let stagger = 0
+  nodes.forEach((el) => {
+    el.classList.add('reveal')
+    if (el.classList.contains('feature-row') || el.matches('.steps li')) {
+      el.style.transitionDelay = `${Math.min(stagger, 8) * 45}ms`
+      stagger += 1
+    }
+  })
 
   if (!('IntersectionObserver' in window)) {
     nodes.forEach((el) => el.classList.add('is-in'))
@@ -154,7 +164,32 @@ function setupReveal() {
   nodes.forEach((el) => io.observe(el))
 }
 
+function setupNavChrome() {
+  const nav = document.getElementById('site-nav')
+  if (!nav) return
+
+  const onScroll = () => {
+    nav.classList.toggle('is-scrolled', window.scrollY > 24)
+  }
+  onScroll()
+  window.addEventListener('scroll', onScroll, { passive: true })
+
+  const more = nav.querySelector('.nav-more')
+  if (more) {
+    document.addEventListener('click', (e) => {
+      if (!(e.target instanceof Node)) return
+      if (!more.contains(e.target)) more.open = false
+    })
+    more.querySelectorAll('a').forEach((a) => {
+      a.addEventListener('click', () => {
+        more.open = false
+      })
+    })
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   void loadLatestRelease()
   setupReveal()
+  setupNavChrome()
 })

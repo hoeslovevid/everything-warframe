@@ -31,31 +31,31 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <header class="site-nav">
+    <header class="site-nav" id="site-nav">
       <a class="nav-brand" href="#top">
         <span class="brand-mark" aria-hidden="true"></span>
         <span>Everything Warframe</span>
       </a>
       <nav class="nav-links" aria-label="Primary">
-        <a class="nav-link-secondary" href="#how">How it works</a>
-        <a class="nav-link-secondary" href="#features">Features</a>
-        <a href="#trust">Safety</a>
-        <a class="nav-link-secondary" href="#faq">FAQ</a>
-        <a class="nav-link-secondary" href="report.html">Report a bug</a>
-        <a
-          class="nav-ext"
-          href="https://discord.com/oauth2/authorize?client_id=1543118817654476840&amp;permissions=536955880&amp;scope=bot%20applications.commands"
-          target="_blank"
-          rel="noreferrer"
-          >Add Discord bot</a
-        >
-        <a
-          class="nav-ext"
-          href="https://github.com/hoeslovevid/everything-warframe"
-          target="_blank"
-          rel="noreferrer"
-          >GitHub</a
-        >
+        <a href="#features">Features</a>
+        <a href="#discord">Discord bot</a>
+        <details class="nav-more">
+          <summary>More</summary>
+          <div class="nav-more__panel" role="group" aria-label="More links">
+            <a href="#how">How it works</a>
+            <a href="#trust">Safety</a>
+            <a href="#faq">FAQ</a>
+            <a href="report.html">Report a bug</a>
+            <a href="terms.html">Terms</a>
+            <a href="privacy.html">Privacy</a>
+            <a
+              href="https://github.com/hoeslovevid/everything-warframe"
+              target="_blank"
+              rel="noreferrer"
+              >GitHub</a
+            >
+          </div>
+        </details>
         <a class="btn primary nav-cta" href="#download">Download</a>
       </nav>
     </header>
@@ -123,14 +123,14 @@
             <div class="cta-row">
               <a
                 id="download-setup"
-                class="btn primary"
+                class="btn primary btn-lg"
                 href="https://github.com/hoeslovevid/everything-warframe/releases/latest"
               >
                 Download for Windows
               </a>
               <a
                 id="download-linux"
-                class="btn primary"
+                class="btn primary btn-lg"
                 href="https://github.com/hoeslovevid/everything-warframe/releases/latest"
               >
                 Download for Linux
@@ -220,55 +220,57 @@
             One job per panel — live worldstate, reward picks, riven compares, and local inventory.
           </p>
 
-          <div class="feature-block">
-            <span class="surface-mark" aria-hidden="true"></span>
-            <div>
-              <h3>Live worldstate</h3>
-              <p>
-                Cetus, Vallis, Cambion, fissures, Baro Ki’Teer, Nightwave, Archon Hunt, Invasions, and
-                arbitration timers with real countdowns.
-              </p>
-            </div>
-          </div>
-          <div class="feature-block">
-            <span class="surface-mark" aria-hidden="true"></span>
-            <div>
-              <h3>Relic reward overlay</h3>
-              <p>
-                Scan the fissure pick screen (hotkey or EE.log). See set names, owned counts, market
-                platinum, and parts you still need.
-              </p>
-            </div>
-          </div>
-          <div class="feature-block">
-            <span class="surface-mark" aria-hidden="true"></span>
-            <div>
-              <h3>Riven grader</h3>
-              <p>
-                On the Kuva Cycle compare screen, grade current vs new roll and get a keep / take
-                recommendation.
-              </p>
-            </div>
-          </div>
-          <div class="feature-block">
-            <span class="surface-mark" aria-hidden="true"></span>
-            <div>
-              <h3>Layout your way</h3>
-              <p>
-                Drag every panel on a mock monitor in the app — or unlock in-game with Ctrl+Tab and
-                reposition on the fly.
-              </p>
-            </div>
-          </div>
-          <div class="feature-block">
-            <span class="surface-mark" aria-hidden="true"></span>
-            <div>
-              <h3>Inventory stays local</h3>
-              <p>
-                Optional sync via warframe-api-helper or AlecaFrame exports. Data never leaves your PC
-                for “needed for set” tags.
-              </p>
-            </div>
+          <div class="feature-rail">
+            <article class="feature-row">
+              <span class="feature-row__index" aria-hidden="true">01</span>
+              <div class="feature-row__copy">
+                <h3>Live worldstate</h3>
+                <p>
+                  Cetus, Vallis, Cambion, fissures, Baro Ki’Teer, Nightwave, Archon Hunt, Invasions,
+                  and arbitration timers with real countdowns.
+                </p>
+              </div>
+            </article>
+            <article class="feature-row">
+              <span class="feature-row__index" aria-hidden="true">02</span>
+              <div class="feature-row__copy">
+                <h3>Relic reward overlay</h3>
+                <p>
+                  Scan the fissure pick screen (hotkey or EE.log). See set names, owned counts,
+                  market platinum, and parts you still need.
+                </p>
+              </div>
+            </article>
+            <article class="feature-row">
+              <span class="feature-row__index" aria-hidden="true">03</span>
+              <div class="feature-row__copy">
+                <h3>Riven grader</h3>
+                <p>
+                  On the Kuva Cycle compare screen, grade current vs new roll and get a keep / take
+                  recommendation.
+                </p>
+              </div>
+            </article>
+            <article class="feature-row">
+              <span class="feature-row__index" aria-hidden="true">04</span>
+              <div class="feature-row__copy">
+                <h3>Layout your way</h3>
+                <p>
+                  Drag every panel on a mock monitor in the app — or unlock in-game with Ctrl+Tab and
+                  reposition on the fly.
+                </p>
+              </div>
+            </article>
+            <article class="feature-row">
+              <span class="feature-row__index" aria-hidden="true">05</span>
+              <div class="feature-row__copy">
+                <h3>Inventory stays local</h3>
+                <p>
+                  Optional sync via warframe-api-helper or AlecaFrame exports. Data never leaves your
+                  PC for “needed for set” tags.
+                </p>
+              </div>
+            </article>
           </div>
         </div>
       </section>
@@ -359,55 +361,44 @@
             the game in <strong>Borderless Windowed</strong> so the overlay can sit above it.
           </p>
 
-          <div class="download-meta" id="download-meta" hidden>
-            <p>
-              <span class="meta-label">Version</span>
-              <strong id="meta-version" class="vl-pill is-premium">—</strong>
-            </p>
-            <p>
-              <span class="meta-label">Published</span>
-              <strong id="meta-date" class="vl-pill">—</strong>
-            </p>
-            <p>
-              <span class="meta-label">Windows Setup</span>
-              <strong id="meta-size" class="vl-pill">—</strong>
-            </p>
-            <p>
-              <span class="meta-label">Linux AppImage</span>
-              <strong id="meta-size-linux" class="vl-pill">—</strong>
-            </p>
-          </div>
-
-          <div class="cta-row">
-            <a
-              id="download-setup-2"
-              class="btn primary"
-              href="https://github.com/hoeslovevid/everything-warframe/releases/latest"
-            >
-              Windows Setup
-            </a>
-            <a
-              id="download-linux-2"
-              class="btn primary"
-              href="https://github.com/hoeslovevid/everything-warframe/releases/latest"
-            >
-              Linux AppImage
-            </a>
-            <a
-              id="download-portable-2"
-              class="btn ghost"
-              href="https://github.com/hoeslovevid/everything-warframe/releases/latest"
-            >
-              Windows portable
-            </a>
-            <a
-              class="btn ghost"
-              href="https://github.com/hoeslovevid/everything-warframe/releases"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Release notes
-            </a>
+          <div class="download-strip">
+            <div class="download-strip__meta" id="download-meta" hidden>
+              <span class="vl-pill is-premium" id="meta-version">—</span>
+              <span class="vl-pill" id="meta-date">—</span>
+              <span class="vl-pill" id="meta-size">—</span>
+              <span class="vl-pill" id="meta-size-linux">—</span>
+            </div>
+            <div class="cta-row cta-row--download">
+              <a
+                id="download-setup-2"
+                class="btn primary btn-lg"
+                href="https://github.com/hoeslovevid/everything-warframe/releases/latest"
+              >
+                Windows Setup
+              </a>
+              <a
+                id="download-linux-2"
+                class="btn primary btn-lg"
+                href="https://github.com/hoeslovevid/everything-warframe/releases/latest"
+              >
+                Linux AppImage
+              </a>
+              <a
+                id="download-portable-2"
+                class="btn ghost"
+                href="https://github.com/hoeslovevid/everything-warframe/releases/latest"
+              >
+                Windows portable
+              </a>
+              <a
+                class="btn ghost"
+                href="https://github.com/hoeslovevid/everything-warframe/releases"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Release notes
+              </a>
+            </div>
           </div>
           <p class="muted" id="asset-note">
             Windows: prefer Setup for auto-updates. Linux: chmod +x the AppImage, or install the

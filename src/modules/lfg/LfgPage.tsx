@@ -1305,6 +1305,18 @@ export function LfgPage({
                   checked={settings.lfgDiscordNotifyOnCreate}
                   onChange={(next) => saveProfile({ lfgDiscordNotifyOnCreate: next })}
                 />
+                <ToggleRow
+                  label="Auto-close LFG on mission start"
+                  description="When EE.log detects a mission start, close squads you are hosting."
+                  checked={settings.lfgAutoCloseOnMissionStart}
+                  onChange={(next) => saveProfile({ lfgAutoCloseOnMissionStart: next })}
+                />
+                <ToggleRow
+                  label="Auto-extend LFG after mission"
+                  description="When a mission completes and your hosted listing has under 8 minutes left, add +10 minutes."
+                  checked={settings.lfgAutoExtendOnMissionComplete}
+                  onChange={(next) => saveProfile({ lfgAutoExtendOnMissionComplete: next })}
+                />
                 <label className="field">
                   <span>Discord webhook URL</span>
                   <input

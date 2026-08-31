@@ -232,9 +232,39 @@ function setupDiscordInviteCopy() {
   })
 }
 
+function setupHubLiveBadge() {
+  const badge = document.getElementById('nav-hub-badge')
+  if (!badge) return
+  const HUB = 'https://everything-warframe-production.up.railway.app'
+  const tick = async () => {
+    try {
+      const res = await fetch(`${HUB}/metrics`, { cache: 'no-store' })
+      if (!res.ok) throw new Error(String(res.status))
+      const data = await res.json()
+      const n = typeof data.listings === 'number' ? data.listings : 0
+      const bot = data.discord?.botReady
+      badge.hidden = false
+      badge.classList.toggle('is-offline', bot === false)
+      badge.textContent = bot === false ? 'hub offline' : `${n} open`
+      badge.title =
+        bot === false
+          ? 'LFG hub Discord bot offline'
+          : `${n} open listing${n === 1 ? '' : 's'} on the community board`
+    } catch {
+      badge.hidden = false
+      badge.classList.add('is-offline')
+      badge.textContent = 'hub ?'
+      badge.title = 'Could not reach LFG hub metrics'
+    }
+  }
+  void tick()
+  window.setInterval(() => void tick(), 30_000)
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   void loadLatestRelease()
   setupReveal()
   setupNavChrome()
   setupDiscordInviteCopy()
+  setupHubLiveBadge()
 })

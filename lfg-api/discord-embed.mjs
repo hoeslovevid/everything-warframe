@@ -11,6 +11,7 @@ export const WHISPER_CUSTOM_ID_PREFIX = 'lfg:whisper:'
 export const JOIN_CUSTOM_ID_PREFIX = 'lfg:join:'
 export const LEAVE_CUSTOM_ID_PREFIX = 'lfg:leave:'
 export const JOIN_MODAL_ID_PREFIX = 'lfg:joinmodal:'
+export const CLOSE_CUSTOM_ID_PREFIX = 'lfg:close:'
 
 /**
  * @param {string} listingId
@@ -31,6 +32,13 @@ export function joinButtonCustomId(listingId) {
  */
 export function leaveButtonCustomId(listingId) {
   return `${LEAVE_CUSTOM_ID_PREFIX}${String(listingId)}`
+}
+
+/**
+ * @param {string} listingId
+ */
+export function closeButtonCustomId(listingId) {
+  return `${CLOSE_CUSTOM_ID_PREFIX}${String(listingId)}`
 }
 
 /**
@@ -73,6 +81,14 @@ export function parseJoinButtonCustomId(customId) {
  */
 export function parseLeaveButtonCustomId(customId) {
   return parsePrefixedId(customId, LEAVE_CUSTOM_ID_PREFIX)
+}
+
+/**
+ * @param {string} customId
+ * @returns {string | null}
+ */
+export function parseCloseButtonCustomId(customId) {
+  return parsePrefixedId(customId, CLOSE_CUSTOM_ID_PREFIX)
 }
 
 /**

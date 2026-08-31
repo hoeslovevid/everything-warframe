@@ -7,6 +7,7 @@ export type LogEvent = {
     | 'relic_rewards_end'
     | 'riven_reroll'
     | 'riven_reroll_end'
+    | 'mission_start'
     | 'mission_complete'
   /** Approximate squad size when known (relic reward screen). */
   squadSize?: number | null
@@ -72,8 +73,22 @@ const MISSION_COMPLETE_PATTERNS = [
   /Hud\.lua:.*Mission\s+(?:complete|success|extracted)/i,
 ]
 
+/** Mission / session start — used for LFG auto-close. */
+const MISSION_START_PATTERNS = [
+  /LotusGameRules.*(?:Start|Begin)/i,
+  /OnMatchStart|Match has started|MatchStarted/i,
+  /Script \[Info\]:.*(?:HostMission|StartMission|MissionStart)/i,
+  /Initializing mission|Mission initialization/i,
+  /GameRulesImpl.*OnMatchStarted/i,
+]
+
 function lineIsMissionComplete(line: string): boolean {
   return MISSION_COMPLETE_PATTERNS.some((re) => re.test(line))
+}
+
+function lineIsMissionStart(line: string): boolean {
+  if (lineIsMissionComplete(line)) return false
+  return MISSION_START_PATTERNS.some((re) => re.test(line))
 }
 
 function lineIsRewardEnd(line: string): boolean {
@@ -97,6 +112,7 @@ export class LogWatcher extends EventEmitter {
   private lastStartEmit = 0
   private lastEndEmit = 0
   private lastMissionCompleteEmit = 0
+  private lastMissionStartEmit = 0
   private lastRivenStart = 0
   private lastRivenEnd = 0
   private rewardScreenOpen = false
@@ -293,6 +309,12 @@ export class LogWatcher extends EventEmitter {
           this.rewardScreenOpen = false
           this.voidProjectionCount = 0
           this.emit('event', { type: 'relic_rewards_end' } satisfies LogEvent)
+        } else if (
+          lineIsMissionStart(line) &&
+          now - this.lastMissionStartEmit >= 15_000
+        ) {
+          this.lastMissionStartEmit = now
+          this.emit('event', { type: 'mission_start' } satisfies LogEvent)
         } else if (
           lineIsMissionComplete(line) &&
           now - this.lastMissionCompleteEmit >= 8000

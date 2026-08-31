@@ -895,6 +895,27 @@ code {
   margin-bottom: 12px;
 }
 
+.hub-live-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+  border: 1px solid color-mix(in srgb, var(--vl-teal) 45%, transparent);
+  background: color-mix(in srgb, var(--vl-teal) 16%, transparent);
+  color: var(--vl-teal-bright, #5fd0c5);
+}
+
+.hub-live-badge.is-offline {
+  border-color: color-mix(in srgb, #c07060 50%, transparent);
+  background: color-mix(in srgb, #c07060 14%, transparent);
+  color: #e8a090;
+}
+
 .section-discord .discord-steps {
   margin: 1.25rem auto 1rem;
   max-width: 44rem;

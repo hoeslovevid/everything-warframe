@@ -26,9 +26,11 @@ import {
 import {
   buildLfgEmbed,
   buildWhisperFromListing,
+  closeButtonCustomId,
   joinButtonCustomId,
   joinModalCustomId,
   leaveButtonCustomId,
+  parseCloseButtonCustomId,
   parseJoinButtonCustomId,
   parseJoinModalCustomId,
   parseLeaveButtonCustomId,
@@ -147,6 +149,41 @@ function hostDiscordUserIds(listing) {
     for (const uid of store.findDiscordUserIdsByIgn(ign)) ids.add(uid)
   }
   return [...ids]
+}
+
+/**
+ * True if this Discord user is the listing host (discord: clientId or /lfg link IGN).
+ * @param {object} listing
+ * @param {string} discordUserId
+ */
+function isDiscordListingHost(listing, discordUserId) {
+  if (!listing || !discordUserId) return false
+  const myClientId = discordClientId(discordUserId)
+  if (listing.members?.some((m) => m.isHost && m.clientId === myClientId)) return true
+  const store = getStore?.()
+  const linked = store?.getDiscordUserIgn?.(discordUserId)
+  if (
+    linked &&
+    String(listing.hostIgn || '')
+      .trim()
+      .toLowerCase() === String(linked).trim().toLowerCase()
+  ) {
+    return true
+  }
+  return false
+}
+
+/**
+ * @param {string} discordUserId
+ * @returns {any | null}
+ */
+function findHostedListing(discordUserId) {
+  const store = getStore?.()
+  if (!store) return null
+  const rows = store.list({}) || []
+  return (
+    rows.find((r) => isDiscordListingHost(r, discordUserId)) || null
+  )
 }
 
 /**
@@ -336,6 +373,10 @@ function toDiscordPayload(listing, opts = {}) {
         .setCustomId(whisperButtonCustomId(listing.id))
         .setLabel('Whisper')
         .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId(closeButtonCustomId(listing.id))
+        .setLabel('Close')
+        .setStyle(ButtonStyle.Danger),
     )
     components.push(row)
   }
@@ -569,6 +610,92 @@ function buildSlashCommands() {
               .setMaxLength(40),
           ),
       )
+      .addSubcommand((sc) =>
+        sc
+          .setName('find')
+          .setDescription('Browse open hub LFG listings')
+          .addStringOption((opt) =>
+            opt
+              .setName('activity')
+              .setDescription('Filter by activity')
+              .setRequired(false)
+              .addChoices(
+                { name: 'Relic', value: 'relic' },
+                { name: 'Fissure', value: 'fissure' },
+                { name: 'Farm', value: 'farm' },
+                { name: 'Boss', value: 'boss' },
+                { name: 'Custom', value: 'custom' },
+              ),
+          )
+          .addStringOption((opt) =>
+            opt
+              .setName('region')
+              .setDescription('Filter by region (na, eu, …)')
+              .setRequired(false)
+              .setMaxLength(8),
+          )
+          .addStringOption((opt) =>
+            opt
+              .setName('platform')
+              .setDescription('Filter by platform (pc, psn, …)')
+              .setRequired(false)
+              .setMaxLength(16),
+          )
+          .addStringOption((opt) =>
+            opt
+              .setName('q')
+              .setDescription('Search title / host / relic')
+              .setRequired(false)
+              .setMaxLength(60),
+          )
+          .addStringOption((opt) =>
+            opt
+              .setName('intent')
+              .setDescription('Host squads or looking-for-host')
+              .setRequired(false)
+              .addChoices(
+                { name: 'Hosting', value: 'host' },
+                { name: 'Looking for host', value: 'seek' },
+              ),
+          ),
+      )
+      .addSubcommand((sc) =>
+        sc.setName('close').setDescription('Close your active LFG listing'),
+      )
+      .addSubcommand((sc) =>
+        sc
+          .setName('edit')
+          .setDescription('Edit your active LFG listing')
+          .addStringOption((opt) =>
+            opt
+              .setName('title')
+              .setDescription('New title')
+              .setRequired(false)
+              .setMaxLength(100),
+          )
+          .addStringOption((opt) =>
+            opt
+              .setName('notes')
+              .setDescription('New notes')
+              .setRequired(false)
+              .setMaxLength(160),
+          )
+          .addIntegerOption((opt) =>
+            opt
+              .setName('slots')
+              .setDescription('Squad size 2–4')
+              .setRequired(false)
+              .setMinValue(2)
+              .setMaxValue(4),
+          )
+          .addStringOption((opt) =>
+            opt
+              .setName('mission_hint')
+              .setDescription('Mission / node hint')
+              .setRequired(false)
+              .setMaxLength(60),
+          ),
+      )
       .toJSON(),
   ]
 }
@@ -578,7 +705,9 @@ async function registerSlashCommands(c) {
   const rest = new REST({ version: '10' }).setToken(String(process.env.DISCORD_BOT_TOKEN).trim())
   try {
     await rest.put(Routes.applicationCommands(c.user.id), { body })
-    console.info('[LFG] Discord slash commands registered (/lfg setup|status|clear|help|link|unlink|post)')
+    console.info(
+      '[LFG] Discord slash commands registered (/lfg setup|status|clear|help|link|unlink|post|find|close|edit)',
+    )
   } catch (err) {
     console.warn(
       '[lfg-api] Discord command register failed:',
@@ -796,7 +925,9 @@ async function handleHelpCommand(interaction) {
       '• `/lfg link ign:YourIgn` — Join button + members-only matching + `/lfg post`',
       '• `/lfg unlink` — clear linked IGN',
       '• `/lfg post title:…` — create a hub listing (join a voice channel to attach voice link)',
-      '• On posts: **Join** · **Leave** · **Whisper** (hosts get a DM on Join when linked)',
+      '• `/lfg find` — browse open hub squads',
+      '• `/lfg edit` / `/lfg close` — manage your active listing (or use **Close** on the post)',
+      '• On posts: **Join** · **Leave** · **Whisper** · **Close** (hosts get a DM on Join when linked)',
       '',
       `Invite: ${invite}`,
       `Guide: ${guide}`,
@@ -996,6 +1127,113 @@ async function handlePostCommand(interaction) {
   await interaction.editReply({ content: bits.join('\n') })
 }
 
+async function handleFindCommand(interaction) {
+  const store = getStore?.()
+  if (!store) {
+    await interaction.reply({
+      content: 'Store unavailable.',
+      flags: MessageFlags.Ephemeral,
+    })
+    return
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral })
+  const rows = store.list({
+    activity: interaction.options.getString('activity') || '',
+    region: interaction.options.getString('region') || '',
+    platform: interaction.options.getString('platform') || '',
+    q: interaction.options.getString('q') || '',
+    intent: interaction.options.getString('intent') || '',
+  })
+  if (!rows.length) {
+    await interaction.editReply({
+      content: 'No open listings match those filters right now.',
+    })
+    return
+  }
+  const lines = rows.slice(0, 12).map((r) => {
+    const slots = `${(r.members || []).length}/${r.slotsTotal}`
+    const seek = r.intent === 'seek' ? ' · LFH' : ''
+    return `• **${r.title}** — ${r.hostIgn}${seek} · ${r.activity} · ${String(r.platform).toUpperCase()} · ${String(r.region).toUpperCase()} · ${slots}`
+  })
+  if (rows.length > 12) lines.push(`_…and ${rows.length - 12} more on the companion board._`)
+  await interaction.editReply({ content: lines.join('\n') })
+}
+
+async function handleCloseCommand(interaction) {
+  const store = getStore?.()
+  if (!store) {
+    await interaction.reply({
+      content: 'Store unavailable.',
+      flags: MessageFlags.Ephemeral,
+    })
+    return
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral })
+  const listing = findHostedListing(interaction.user.id)
+  if (!listing) {
+    await interaction.editReply({
+      content:
+        'You have no active listing. Hosts must `/lfg link` the same IGN used when posting from the companion.',
+    })
+    return
+  }
+  store.remove(listing.id)
+  closeLfgMessage(enrichListingForDiscord(listing))
+  try {
+    const { broadcastLfgEvent } = await import('./hub-events.mjs')
+    broadcastLfgEvent('listing', { type: 'closed', id: listing.id })
+  } catch {
+    // optional
+  }
+  await interaction.editReply({ content: `Closed **${listing.title}**.` })
+}
+
+async function handleEditCommand(interaction) {
+  const store = getStore?.()
+  if (!store) {
+    await interaction.reply({
+      content: 'Store unavailable.',
+      flags: MessageFlags.Ephemeral,
+    })
+    return
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral })
+  const listing = findHostedListing(interaction.user.id)
+  if (!listing) {
+    await interaction.editReply({
+      content: 'You have no active listing to edit.',
+    })
+    return
+  }
+  const title = interaction.options.getString('title')
+  const notes = interaction.options.getString('notes')
+  const slots = interaction.options.getInteger('slots')
+  const missionHint = interaction.options.getString('mission_hint')
+  if (title == null && notes == null && slots == null && missionHint == null) {
+    await interaction.editReply({
+      content: 'Provide at least one of: title, notes, slots, mission_hint.',
+    })
+    return
+  }
+  if (typeof title === 'string') listing.title = cleanStr(title, 100) || listing.title
+  if (typeof notes === 'string') listing.notes = cleanStr(notes, 160)
+  if (typeof slots === 'number' && listing.intent !== 'seek') {
+    listing.slotsTotal = Math.min(4, Math.max(2, slots))
+  }
+  if (typeof missionHint === 'string') {
+    listing.missionHint = cleanStr(missionHint, 60) || null
+  }
+  store.upsert(listing)
+  void editLfgMessage(enrichListingForDiscord(listing))
+  try {
+    const { broadcastLfgEvent } = await import('./hub-events.mjs')
+    broadcastLfgEvent('listing', { type: 'updated', id: listing.id })
+  } catch {
+    // optional
+  }
+  await interaction.editReply({ content: `Updated **${listing.title}**.` })
+}
+
 /**
  * @param {import('discord.js').ButtonInteraction} interaction
  * @param {string} listingId
@@ -1096,6 +1334,9 @@ export function startDiscordBot(storeGetter) {
           else if (sub === 'link') await handleLinkCommand(interaction)
           else if (sub === 'unlink') await handleUnlinkCommand(interaction)
           else if (sub === 'post') await handlePostCommand(interaction)
+          else if (sub === 'find') await handleFindCommand(interaction)
+          else if (sub === 'close') await handleCloseCommand(interaction)
+          else if (sub === 'edit') await handleEditCommand(interaction)
           return
         }
 
@@ -1180,6 +1421,40 @@ export function startDiscordBot(storeGetter) {
             content: result.closed
               ? 'Left — squad closed (host gone).'
               : 'Left the squad. Hub board / companion will refresh shortly.',
+            flags: MessageFlags.Ephemeral,
+          })
+          return
+        }
+
+        const closeId = parseCloseButtonCustomId(interaction.customId)
+        if (closeId) {
+          const store = getStore?.()
+          const row = store?.get?.(closeId)
+          if (!row || Date.parse(row.expiresAt) <= Date.now()) {
+            await interaction.reply({
+              content: 'That listing is already closed.',
+              flags: MessageFlags.Ephemeral,
+            })
+            return
+          }
+          if (!isDiscordListingHost(row, interaction.user.id)) {
+            await interaction.reply({
+              content:
+                'Only the host can close this listing. Link your IGN with `/lfg link` if you posted from the companion.',
+              flags: MessageFlags.Ephemeral,
+            })
+            return
+          }
+          store.remove(row.id)
+          closeLfgMessage(enrichListingForDiscord(row))
+          try {
+            const { broadcastLfgEvent } = await import('./hub-events.mjs')
+            broadcastLfgEvent('listing', { type: 'closed', id: row.id })
+          } catch {
+            // optional
+          }
+          await interaction.reply({
+            content: `Closed **${row.title}**.`,
             flags: MessageFlags.Ephemeral,
           })
         }
@@ -1277,10 +1552,39 @@ export async function createLfgMessage(listing) {
       }
       const msg = await ch.send(sendPayload)
       if (msg?.id) {
+        /** @type {string | null} */
+        let threadId = null
+        try {
+          if (typeof msg.startThread === 'function') {
+            const thread = await msg.startThread({
+              name: `${String(listing.title || 'LFG').slice(0, 80)} · ${String(listing.hostIgn || 'squad').slice(0, 20)}`,
+              autoArchiveDuration: 60,
+              reason: 'LFG squad coordination',
+            })
+            threadId = thread?.id || null
+            if (threadId) {
+              const intro = [
+                `Squad thread for **${listing.hostIgn || '?'}** — **${listing.title || 'LFG'}**.`,
+                listing.whisper || buildWhisperFromListing(listing)
+                  ? `Whisper: \`${listing.whisper || buildWhisperFromListing(listing)}\``
+                  : '',
+              ]
+                .filter(Boolean)
+                .join('\n')
+              await thread.send({ content: intro }).catch(() => {})
+            }
+          }
+        } catch (err) {
+          console.warn(
+            '[lfg-api] Discord thread create failed:',
+            err instanceof Error ? err.message : err,
+          )
+        }
         posts.push({
           guildId: t.guildId,
           channelId: t.channelId,
           messageId: msg.id,
+          threadId,
         })
       }
     } catch (err) {
@@ -1380,6 +1684,18 @@ export function closeLfgMessage(listing, { deleteMessage = true } = {}) {
   if (!isBotReady()) return
   void (async () => {
     try {
+      // Archive squad threads first
+      for (const p of listingPosts(listing)) {
+        if (!p.threadId || !client) continue
+        try {
+          const th = await client.channels.fetch(p.threadId)
+          if (th && 'setArchived' in th) {
+            await th.setArchived(true, 'LFG closed')
+          }
+        } catch {
+          // thread may already be gone
+        }
+      }
       await editLfgMessage(listing, { closed: true })
       if (deleteMessage) {
         await new Promise((r) => setTimeout(r, 2500))

@@ -83,9 +83,22 @@ export function UpdateSettings() {
           >
             Restart &amp; install
           </button>
+          <button
+            className="btn ghost"
+            type="button"
+            onClick={() => {
+              window.dispatchEvent(
+                new CustomEvent('voidlens:show-whats-new', {
+                  detail: { version: status.currentVersion },
+                }),
+              )
+            }}
+          >
+            What’s new
+          </button>
           <a
             className="btn ghost"
-            href="https://github.com/hoeslovevid/Warframe-Companion-Helper/releases"
+            href="https://github.com/hoeslovevid/everything-warframe/releases"
             target="_blank"
             rel="noreferrer"
             style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}

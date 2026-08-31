@@ -599,6 +599,18 @@ function mergeSettings(raw: Partial<AppSettings> | null | undefined): AppSetting
         ? (raw as { marketSessionGuideDismissed: boolean }).marketSessionGuideDismissed
         : base.marketSessionGuideDismissed,
     lastSeenVersion: raw.lastSeenVersion ?? base.lastSeenVersion,
+    lfgAutoCloseOnMissionStart:
+      typeof (raw as { lfgAutoCloseOnMissionStart?: unknown }).lfgAutoCloseOnMissionStart ===
+      'boolean'
+        ? Boolean((raw as { lfgAutoCloseOnMissionStart: boolean }).lfgAutoCloseOnMissionStart)
+        : base.lfgAutoCloseOnMissionStart,
+    lfgAutoExtendOnMissionComplete:
+      typeof (raw as { lfgAutoExtendOnMissionComplete?: unknown })
+        .lfgAutoExtendOnMissionComplete === 'boolean'
+        ? Boolean(
+            (raw as { lfgAutoExtendOnMissionComplete: boolean }).lfgAutoExtendOnMissionComplete,
+          )
+        : base.lfgAutoExtendOnMissionComplete,
     onboarding: {
       ...base.onboarding,
       ...(raw.onboarding ?? {}),

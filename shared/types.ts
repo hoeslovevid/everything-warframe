@@ -620,6 +620,10 @@ export type AppSettings = {
   marketSessionGuideDismissed: boolean
   /** Last app version for which “What’s new” was dismissed. */
   lastSeenVersion: string
+  /** Auto-close hosted LFG listings when EE.log detects mission start. */
+  lfgAutoCloseOnMissionStart: boolean
+  /** Auto-extend hosted LFG when EE.log detects mission complete and TTL is low. */
+  lfgAutoExtendOnMissionComplete: boolean
   /** First-run checklist + tour state */
   onboarding: {
     checklistDismissed: boolean
@@ -897,6 +901,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ],
   marketSessionGuideDismissed: false,
   lastSeenVersion: '',
+  lfgAutoCloseOnMissionStart: true,
+  lfgAutoExtendOnMissionComplete: true,
   onboarding: {
     checklistDismissed: false,
     borderlessAck: false,

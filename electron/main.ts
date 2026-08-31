@@ -374,6 +374,8 @@ function broadcastSettings(settings: AppSettings, except?: WebContents) {
   }
 }
 
+void import('./services/lfg-ee-hooks').then((m) => m.bindLfgEeHooks(broadcastSettings))
+
 function broadcastWorldstate(data: WorldstateSnapshot) {
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send('worldstate:updated', data)
@@ -2036,9 +2038,13 @@ app.whenReady().then(async () => {
       }
       console.info('[Everything Warframe] EE.log riven reroll ended — dismissing popup')
       dismissRivenPopup()
+    } else if (event.type === 'mission_start') {
+      console.info('[Everything Warframe] EE.log mission start — LFG auto-close check')
+      void import('./services/lfg-ee-hooks').then((m) => m.onLfgMissionStart())
     } else if (event.type === 'mission_complete') {
       console.info('[Everything Warframe] EE.log mission complete — arming arbitration haul window')
       void import('./services/arbitration-log').then((m) => m.noteMissionComplete())
+      void import('./services/lfg-ee-hooks').then((m) => m.onLfgMissionComplete())
     }
   })
   // Interval applied via syncLogWatcherInterval() after windows exist (perf-aware).

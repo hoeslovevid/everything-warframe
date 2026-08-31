@@ -605,6 +605,16 @@ export function CompanionApp() {
   }, [ready, settings.lastSeenVersion])
 
   useEffect(() => {
+    const onShow = (e: Event) => {
+      const detail = (e as CustomEvent<{ version?: string }>).detail
+      if (detail?.version) setAppVersion(detail.version)
+      setWhatsNewOpen(true)
+    }
+    window.addEventListener('voidlens:show-whats-new', onShow)
+    return () => window.removeEventListener('voidlens:show-whats-new', onShow)
+  }, [])
+
+  useEffect(() => {
     if (!window.voidlens?.onRelicSound) return
     return window.voidlens.onRelicSound(() => playScanSound('relic', settings.soundPack))
   }, [settings.soundPack])
@@ -2598,7 +2608,12 @@ export function CompanionApp() {
         onClose={() => setHotkeysOpen(false)}
       />
 
-      <WhatsNew version={appVersion} open={whatsNewOpen} onDismiss={dismissWhatsNew} />
+      <WhatsNew
+        version={appVersion}
+        open={whatsNewOpen}
+        previousVersion={settings.lastSeenVersion || undefined}
+        onDismiss={dismissWhatsNew}
+      />
       <ToastHost />
       <CommandPalette
         open={paletteOpen}

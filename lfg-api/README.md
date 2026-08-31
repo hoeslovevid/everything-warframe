@@ -129,9 +129,11 @@ Optional: only announce matching activities (comma-separated):
 
 That stores the channel in the hub DB and auto-creates a channel webhook as fallback.  
 With **members only**, the host must have run `/lfg link` (or joined Discord with a matching IGN) and be a member of that server — otherwise that guild is skipped.  
-Also useful: `/lfg help`, `/lfg status`, `/lfg clear`.
+Also useful: `/lfg help`, `/lfg find`, `/lfg edit`, `/lfg close`, `/lfg status`, `/lfg clear`.
 
 Public guide: https://hoeslovevid.github.io/Warframe-Companion-Helper/lfg-discord.html
+
+Announce posts get **Join / Leave / Whisper / Close** buttons and a public squad thread. Hosts (Discord `clientId` or matching `/lfg link` IGN) can close from the button or `/lfg close`.
 
 6. Anyone can save their Warframe name for Join **and** members-only announce matching:
 

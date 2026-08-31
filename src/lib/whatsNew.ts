@@ -433,6 +433,12 @@ export const WHATS_NEW: Record<string, string[]> = {
     'Foundry: Buy on market for missing craft materials',
     'Website hub status page + clearer community hub rate-limit fallback',
   ],
+  '0.9.93': [
+    'What’s new modal after update + Settings → Updates “What’s new”',
+    'Discord: /lfg find, /lfg edit, /lfg close, Close button, squad threads',
+    'EE.log: auto-close hosted LFG on mission start; auto-extend after mission',
+    'Website live hub badge (open listing count) in the nav',
+  ],
 }
 
 export function getWhatsNewBullets(version: string): string[] {

@@ -59,6 +59,15 @@
   letter-spacing: 0.08em;
 }
 
+.overlay-root .riven-card,
+.overlay-root .relic-card {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: var(--vl-panel-solid);
+}
+
+.overlay-root .reading-quality { font-size: 9px; margin: 5px 0; }
+
 .overlay-root .vl-panel__subtitle,
 .overlay-root .vl-panel__body {
   font-size: var(--vl-type-meta);

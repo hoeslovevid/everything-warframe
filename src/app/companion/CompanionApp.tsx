@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   COLOR_THEME_META,
   ColorThemeId,
@@ -55,15 +55,8 @@ import { InvasionsPanel } from '../../modules/invasions/InvasionsPanel'
 import { ArchonPanel } from '../../modules/archon/ArchonPanel'
 import { DeepArchimedeaPanel } from '../../modules/deepArchimedea/DeepArchimedeaPanel'
 import { RivenPanel } from '../../modules/rivens/RivenPanel'
-import { FoundryPage } from '../../modules/foundry/FoundryPage'
-import { MarketPage } from '../../modules/market/MarketPage'
-import { LfgPage, type LfgPrefill } from '../../modules/lfg/LfgPage'
-import { RelicPlannerPage } from '../../modules/relicPlanner/RelicPlannerPage'
-import { MasteryPage } from '../../modules/mastery/MasteryPage'
-import { LoadoutPage } from '../../modules/loadout/LoadoutPage'
+import type { LfgPrefill } from '../../modules/lfg/LfgPage'
 import { ArbitrationLogPanel } from '../../modules/arbitrationLog/ArbitrationLogPanel'
-import { InventoryPage } from '../../modules/inventory/InventoryPage'
-import { SetsPage } from '../../modules/sets/SetsPage'
 import { LinuxCaptureWizard } from '../../components/LinuxCaptureWizard'
 import { ToastHost } from '../../components/ToastHost'
 import { CommandPalette, CommandAction } from '../../components/CommandPalette'
@@ -76,13 +69,25 @@ import { pushToast } from '../../lib/toast'
 import { resolveUiLocale, t } from '../../lib/i18n'
 import { formatSessionLedgerSummary } from '../../lib/sessionLedger'
 import { copyText } from '../../lib/tradeClipboard'
-import { LayoutEditor } from './LayoutEditor'
+import { ScanWorkspace } from '../../components/ScanWorkspace'
 import { prettyHotkey } from '../../lib/hotkey'
 import { playScanSound } from '../../lib/sounds'
 import '../../styles/companion.css'
+import '../../styles/workspace.css'
 import '../../modules/cycles/module.css'
 
+const FoundryPage = lazy(() => import('../../modules/foundry/FoundryPage').then((m) => ({ default: m.FoundryPage })))
+const MarketPage = lazy(() => import('../../modules/market/MarketPage').then((m) => ({ default: m.MarketPage })))
+const LfgPage = lazy(() => import('../../modules/lfg/LfgPage').then((m) => ({ default: m.LfgPage })))
+const LayoutEditor = lazy(() => import('./LayoutEditor').then((m) => ({ default: m.LayoutEditor })))
+const RelicPlannerPage = lazy(() => import('../../modules/relicPlanner/RelicPlannerPage').then((m) => ({ default: m.RelicPlannerPage })))
+const MasteryPage = lazy(() => import('../../modules/mastery/MasteryPage').then((m) => ({ default: m.MasteryPage })))
+const LoadoutPage = lazy(() => import('../../modules/loadout/LoadoutPage').then((m) => ({ default: m.LoadoutPage })))
+const InventoryPage = lazy(() => import('../../modules/inventory/InventoryPage').then((m) => ({ default: m.InventoryPage })))
+const SetsPage = lazy(() => import('../../modules/sets/SetsPage').then((m) => ({ default: m.SetsPage })))
+
 type Tab =
+  | 'scan'
   | 'dashboard'
   | 'modules'
   | 'foundry'
@@ -97,6 +102,8 @@ type Tab =
   | 'layout'
   | 'settings'
   | 'help'
+
+const TAB_LABELS: Record<Tab, string> = { dashboard: 'Mission control', scan: 'Scan workspace', modules: 'Overlay modules', foundry: 'Foundry', sets: 'Prime sets', relicPlanner: 'Relic planner', mastery: 'Mastery', loadout: 'Loadout', arbitrationLog: 'Arbitration haul', inventory: 'Inventory', market: 'Market', lfg: 'Find a squad', layout: 'Layout & capture', settings: 'Settings', help: 'Help' }
 
 const TIER_OPTIONS = ['Lith', 'Meso', 'Neo', 'Axi', 'Requiem']
 
@@ -170,6 +177,7 @@ export function CompanionApp() {
   const [tab, setTab] = useState<Tab>('dashboard')
   /** Heavy tabs stay mounted after first visit so revisits don't rebuild from scratch. */
   const [keptTabs, setKeptTabs] = useState<Partial<Record<'relicPlanner' | 'layout' | 'lfg', true>>>({})
+  const [dashboardExtras, setDashboardExtras] = useState(false)
   const [tourOpen, setTourOpen] = useState(false)
   const [hotkeysOpen, setHotkeysOpen] = useState(false)
   const [whatsNewOpen, setWhatsNewOpen] = useState(false)
@@ -190,8 +198,8 @@ export function CompanionApp() {
   const { data, loading, error, refresh } = useWorldstate()
   const { status: inventory, progress: inventoryProgress } = useInventory()
   const ocrWarmup = useOcrWarmup()
-  const { state: relicScan, ackCelebration } = useRelicScan()
-  const { state: rivenScan } = useRivenScan()
+  const { state: relicScan, ackCelebration, scan: scanRelics } = useRelicScan()
+  const { state: rivenScan, scan: scanRivens } = useRivenScan()
   useColorTheme(settings.colorTheme, settings.customPalette)
   const [playerDucats, setPlayerDucats] = useState<number | null>(null)
   const [playerCredits, setPlayerCredits] = useState<number | null>(null)
@@ -335,7 +343,8 @@ export function CompanionApp() {
 
   const commandActions = useMemo((): CommandAction[] => {
     const tabs: Array<{ id: Tab; label: string }> = [
-      { id: 'dashboard', label: 'Dashboard' },
+      { id: 'dashboard', label: 'Mission control' },
+      { id: 'scan', label: 'Scan workspace' },
       { id: 'modules', label: 'Modules' },
       { id: 'foundry', label: 'Foundry' },
       { id: 'sets', label: 'Sets' },
@@ -567,6 +576,7 @@ export function CompanionApp() {
     if (!window.voidlens?.onCompanionNavigate) return
     return window.voidlens.onCompanionNavigate((next) => {
       const allowed: Tab[] = [
+        'scan',
         'dashboard',
         'modules',
         'foundry',
@@ -708,7 +718,7 @@ export function CompanionApp() {
               </div>
             </div>
             <p className="brand-sub">Cycles, relics, Baro, inventory — one overlay.</p>
-            <div className="nav-section">Play</div>
+            <div className="nav-section">Workspace</div>
             <button
               className={`nav-btn ${tab === 'dashboard' ? 'active' : ''}`}
               data-tour="nav-dashboard"
@@ -723,7 +733,11 @@ export function CompanionApp() {
                   <rect x="9" y="9" width="5" height="5" rx="1" />
                 </svg>
               </span>
-              {t(uiLocale, 'nav.dashboard')}
+              Mission control
+            </button>
+            <button className={`nav-btn ${tab === 'scan' ? 'active' : ''}`} title="Relic and riven screen recognition" data-tour="nav-scan" onClick={() => goTab('scan')}>
+              <span className="nav-btn__icon" aria-hidden><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M1 5V1h4M11 1h4v4M15 11v4h-4M5 15H1v-4M1 8h14" /></svg></span>
+              Scan workspace
             </button>
             <button
               className={`nav-btn ${tab === 'modules' ? 'active' : ''}`}
@@ -998,15 +1012,32 @@ export function CompanionApp() {
             </button>
           </aside>
 
-          <main className="companion-main">
+          <div className="companion-content">
+            <header className="app-topbar">
+              <div className="app-breadcrumb">Companion <span>/</span> <strong>{TAB_LABELS[tab]}</strong></div>
+              <div className="app-topbar__actions">
+                <span className="app-game-state"><i className={`app-status-dot ${inventory.warframeRunning ? 'is-live' : ''}`} />{inventory.warframeRunning ? 'Warframe running' : 'Game offline'}</span>
+                <button className="app-search" onClick={() => setPaletteOpen(true)} aria-label="Search pages and actions">Search anything <kbd>Ctrl K</kbd></button>
+                <button className={`app-overlay-toggle ${settings.overlayVisible ? 'is-on' : ''}`} onClick={() => void window.voidlens?.toggleOverlay()} aria-pressed={settings.overlayVisible}>Overlay {settings.overlayVisible ? 'on' : 'off'}</button>
+              </div>
+            </header>
+          <main className="companion-main" id="workspace-main">
+            <Suspense fallback={<div className="workspace-loading" role="status">Loading workspace…</div>}>
+            {tab === 'scan' ? <ScanWorkspace settings={settings} displays={displays} warmup={ocrWarmup} relic={relicScan} riven={rivenScan} onUpdate={updateSettings} onLayout={() => goTab('layout')} onSettings={() => goTab('settings')} onScanRelics={scanRelics} onScanRivens={scanRivens} onRelicLink={handleRelicDeepLink} /> : null}
             {tab === 'dashboard' ? (
               <>
                 <header className="page-header">
-                  <h2 className="page-title">{t(uiLocale, 'page.dashboard')}</h2>
+                  <div className="workspace-eyebrow">THE ORIGIN SYSTEM / LIVE</div>
+                  <h2 className="page-title">Ready for your next run.</h2>
                   <div className="page-title-rule" />
-                  <p className="page-desc">{t(uiLocale, 'page.dashboardDesc')}</p>
+                  <p className="page-desc">Your rewards, your next build, and what’s happening now.</p>
                 </header>
 
+                <div className="mission-shortcuts">
+                  <button className="mission-shortcut is-scan" onClick={() => goTab('scan')}><span className="mission-shortcut__index">01 / RECOGNITION</span><strong>Scan your screen <span aria-hidden>↗</span></strong><small>Relic rewards & riven comparisons</small></button>
+                  <button className="mission-shortcut" onClick={() => goTab('foundry')}><span className="mission-shortcut__index">02 / PROGRESSION</span><strong>Plan your next build <span aria-hidden>↗</span></strong><small>Crafting trees & owned materials</small></button>
+                  <button className="mission-shortcut" onClick={() => goTab('lfg')}><span className="mission-shortcut__index">03 / SQUAD UP</span><strong>Find your squad <span aria-hidden>↗</span></strong><small>Fissures, radshares & more</small></button>
+                </div>
                 <GettingStarted
                   settings={settings}
                   inventory={inventory}
@@ -1107,35 +1138,6 @@ export function CompanionApp() {
                   {settings.crashReportingConsent ? <CrashPromptBanner /> : null}
                 </div>
 
-                <div style={{ marginBottom: 16 }}>
-                  <OcrCalibWizard
-                    settings={settings}
-                    onUpdate={(partial) => void updateSettings(partial)}
-                    onGoLayout={() => goTab('layout')}
-                    onEnableRelics={() =>
-                      void updateSettings({
-                        modules: { ...settings.modules, relics: true },
-                        onboarding: {
-                          ...settings.onboarding,
-                          modulesTouched: true,
-                        },
-                      })
-                    }
-                    onScanRelic={() => void window.voidlens?.scanRelicRewards()}
-                  />
-                </div>
-
-                <div style={{ marginBottom: 16 }}>
-                  <SessionLedgerPanel
-                    uiLocale={settings.uiLocale}
-                    onClearHaul={() => void window.voidlens?.clearSessionHaul?.()}
-                  />
-                </div>
-
-                <div style={{ marginBottom: 16 }}>
-                  <EconomyTrendPanel />
-                </div>
-
                 <TodaySummary
                   data={data}
                   settings={settings}
@@ -1221,17 +1223,41 @@ export function CompanionApp() {
                   </section>
                 ) : null}
 
-                <Panel
-                  title="Seeing FPS / Frame Time?"
-                  subtitle="That is not part of Everything Warframe"
-                >
-                  <p className="muted" style={{ marginTop: 0 }}>
-                    Everything Warframe only draws Cycles, Fissures, Baro, etc. An FPS / Frame Time
-                    widget is almost always Xbox Game Bar, NVIDIA Overlay, or MSI Afterburner /
-                    RTSS.
-                  </p>
-                </Panel>
+                <details className="dashboard-extras" onToggle={(e) => setDashboardExtras(e.currentTarget.open)}>
+                  <summary>Session insights & recognition setup <span>Expand</span></summary>
+                  {dashboardExtras ? <div className="dashboard-extras__body">
+                <div style={{ marginBottom: 16 }}>
+                  <OcrCalibWizard
+                    settings={settings}
+                    onUpdate={(partial) => void updateSettings(partial)}
+                    onGoLayout={() => goTab('layout')}
+                    onEnableRelics={() =>
+                      void updateSettings({
+                        modules: { ...settings.modules, relics: true },
+                        onboarding: {
+                          ...settings.onboarding,
+                          modulesTouched: true,
+                        },
+                      })
+                    }
+                    onScanRelic={() => void window.voidlens?.scanRelicRewards()}
+                  />
+                </div>
 
+                <div style={{ marginBottom: 16 }}>
+                  <SessionLedgerPanel
+                    uiLocale={settings.uiLocale}
+                    onClearHaul={() => void window.voidlens?.clearSessionHaul?.()}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <EconomyTrendPanel />
+                </div>
+
+                  </div> : null}
+                </details>
+                <div className="workspace-section-heading"><h3>Live activities</h3><button className="btn ghost" onClick={() => goTab('modules')}>Manage modules →</button></div>
                 <div className="section-gap" />
 
                 <div className="grid-2">
@@ -2588,7 +2614,9 @@ export function CompanionApp() {
                 onScrollToConsumed={() => setHelpScrollTo(null)}
               />
             ) : null}
+            </Suspense>
           </main>
+          </div>
         </div>
       </div>
 

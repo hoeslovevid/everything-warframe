@@ -1,3 +1,4 @@
+import { isCompleteRiven } from '../../shared/ocr-quality'
 import fs from 'node:fs'
 import path from 'node:path'
 import { app } from 'electron'
@@ -43,10 +44,11 @@ const AUTO_HIDE_ERROR_MS = 15_000
 
 /** Below this UI score the Cycle compare screen is treated as gone. */
 const RIVEN_GONE_SCORE = 0.25
-/** Consecutive low-score samples before auto-dismiss (~1.2s at 400ms). */
+/** Consecutive low-score samples before auto-dismiss (~2.4s at 800ms). */
 const RIVEN_GONE_HITS = 3
-const RIVEN_GONE_POLL_MS = 400
+const RIVEN_GONE_POLL_MS = 800
 
+let scanGeneration = 0
 let hideTimer: NodeJS.Timeout | null = null
 let screenWatchTimer: NodeJS.Timeout | null = null
 let screenGoneHits = 0
@@ -137,6 +139,7 @@ export function onRivenScanUpdated(cb: Listener) {
 }
 
 export function clearRivenScan(): RivenScanState {
+  scanGeneration += 1
   cancelHide()
   stopRivenScreenWatch()
   state = {
@@ -155,11 +158,13 @@ export function clearRivenScan(): RivenScanState {
 }
 
 export async function warmupRivenScanner(): Promise<void> {
-  await warmupOcr().catch(() => {})
+  await warmupOcr()
 }
 
 export async function scanRivens(trigger: 'manual' | 'log' = 'manual'): Promise<RivenScanState> {
   if (state.scanning) return state
+  const generation = ++scanGeneration
+  const started = performance.now()
   cancelHide()
   stopRivenScreenWatch()
 
@@ -182,7 +187,7 @@ export async function scanRivens(trigger: 'manual' | 'log' = 'manual'): Promise<
     current: ReturnType<typeof parseRivenOcr> | null,
     reroll: ReturnType<typeof parseRivenOcr> | null,
   ) => {
-    if (!current && !reroll) return
+    if (generation !== scanGeneration || (!current && !reroll)) return
     const reco = recommendRolls(current, reroll)
     state = {
       ...state,
@@ -221,6 +226,7 @@ export async function scanRivens(trigger: 'manual' | 'log' = 'manual'): Promise<
           : 'Could not capture riven cards. Use Borderless Windowed, then scan again.',
       )
     }
+    if (generation !== scanGeneration) return state
     let crops = capture.crops
 
     // Fast path: tiny name + per-stat line OCR (Tesseract SINGLE_LINE pool).
@@ -244,9 +250,9 @@ export async function scanRivens(trigger: 'manual' | 'log' = 'manual'): Promise<
       applyPartial(leftOk ? left : null, rightOk ? right : null)
     }
 
-    // Deep only when a side has fewer than 2 parsed stats.
-    const leftWeak = left.stats.length < 2
-    const rightWeak = right.stats.length < 2
+    // Retry sides whose weapon/stat layout is incomplete.
+    const leftWeak = !isCompleteRiven(left)
+    const rightWeak = !isCompleteRiven(right)
 
     if (leftWeak || rightWeak) {
       console.info(
@@ -342,6 +348,8 @@ export async function scanRivens(trigger: 'manual' | 'log' = 'manual'): Promise<
       }
     }
 
+    if (generation !== scanGeneration) return state
+
     // Market is optional — show grades first, then refresh with plat estimates.
     const scannedAt = new Date().toISOString()
     const reco = recommendRolls(current, reroll)
@@ -355,32 +363,25 @@ export async function scanRivens(trigger: 'manual' | 'log' = 'manual'): Promise<
       reroll,
       recommendation: reco.recommendation,
       recommendationNote: reco.note,
+      durationMs: Math.round(performance.now() - started),
     }
     emit()
     scheduleHide(AUTO_HIDE_MS)
     startRivenScreenWatch()
     recordRivenScan(state)
 
-    try {
-      const priced = await enrichRivensWithMarket(current, reroll)
-      if (state.scannedAt === scannedAt && state.active && !state.scanning) {
-        const pricedReco = recommendRolls(priced.current, priced.reroll)
-        state = {
-          ...state,
-          current: priced.current,
-          reroll: priced.reroll,
-          recommendation: pricedReco.recommendation,
-          recommendationNote: pricedReco.note,
-        }
-        emit()
-        updateRivenHistoryPrices(state)
-      }
-    } catch (err) {
-      console.warn('[Everything Warframe] Riven market enrich failed', err)
-    }
+    void enrichRivensWithMarket(current, reroll).then((priced) => {
+      if (generation !== scanGeneration || state.scannedAt !== scannedAt || !state.active || state.scanning) return
+      const pricedReco = recommendRolls(priced.current, priced.reroll)
+      state = { ...state, current: priced.current, reroll: priced.reroll,
+        recommendation: pricedReco.recommendation, recommendationNote: pricedReco.note }
+      emit()
+      updateRivenHistoryPrices(state)
+    }).catch((err) => console.warn('[Everything Warframe] Riven market enrich failed', err))
 
     return state
   } catch (err) {
+    if (generation !== scanGeneration) return state
     state = {
       ...state,
       scanning: false,

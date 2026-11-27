@@ -239,6 +239,18 @@ export function rankUiThemes(png: Buffer, topN = 3): WfThemeId[] {
     .slice(0, Math.max(1, topN))
 }
 
+/** Name-crop votes for recovering one weak slot without recapturing every reward. */
+export function rankTextPixelThemes(bitmap: Buffer, width: number, height: number, topN = 3): WfThemeId[] {
+  const weights = themeVoteWeights(bitmap, width, height, 0, height, 0, width)
+  return [...THEME_IDS].sort((a, b) => (weights.get(b) || 0) - (weights.get(a) || 0)).slice(0, topN)
+}
+
+export function rankTextCropThemes(png: Buffer, topN = 3): WfThemeId[] {
+  const image = nativeImage.createFromBuffer(png)
+  const { width, height } = image.getSize()
+  return rankTextPixelThemes(image.toBitmap(), width, height, topN)
+}
+
 /**
  * WFInfo-style filter: theme text → black, everything else → white.
  * Falls back to bright-luminance isolation when too few theme pixels survive
@@ -249,7 +261,12 @@ export function filterRelicTextPng(png: Buffer, theme: WfThemeId): Buffer {
   const { width, height } = img.getSize()
   if (width < 8 || height < 8) return png
 
-  const src = Buffer.from(img.toBitmap())
+  const out = filterRelicPixels(Buffer.from(img.toBitmap()), width, height, theme)
+  return nativeImage.createFromBitmap(out, { width, height }).toPNG()
+}
+
+/** Text isolation on BGRA pixels, shared by live OCR and offline replay. */
+export function filterRelicPixels(src: Buffer, width: number, height: number, theme: WfThemeId): Buffer {
   const out = Buffer.alloc(src.length)
   let kept = 0
   const total = width * height
@@ -285,7 +302,7 @@ export function filterRelicTextPng(png: Buffer, theme: WfThemeId): Buffer {
     }
   }
 
-  return nativeImage.createFromBitmap(out, { width, height }).toPNG()
+  return out
 }
 
 /**
@@ -298,7 +315,12 @@ export function filterRivenTextPng(png: Buffer): Buffer {
   const { width, height } = img.getSize()
   if (width < 8 || height < 8) return png
 
-  const src = Buffer.from(img.toBitmap())
+  const out = filterRivenPixels(Buffer.from(img.toBitmap()), width, height)
+  return nativeImage.createFromBitmap(out, { width, height }).toPNG()
+}
+
+/** Text isolation on BGRA pixels, shared by live OCR and offline replay. */
+export function filterRivenPixels(src: Buffer, width: number, height: number): Buffer {
   const out = Buffer.alloc(src.length)
   let kept = 0
   const total = width * height
@@ -348,7 +370,7 @@ export function filterRivenTextPng(png: Buffer): Buffer {
     }
   }
 
-  return nativeImage.createFromBitmap(out, { width, height }).toPNG()
+  return out
 }
 
 /**

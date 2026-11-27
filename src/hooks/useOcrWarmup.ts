@@ -1,35 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useSyncExternalStore } from 'react'
 import type { OcrWarmupStatus } from '../../shared/types'
-
-const idle: OcrWarmupStatus = {
-  phase: 'idle',
-  detail: '…',
-  updatedAt: '',
-}
-
-function api() {
-  return window.voidlens
-}
-
+import { createLiveStore } from './liveStore'
+const idle: OcrWarmupStatus = { phase: 'idle', detail: 'Starts on first scan', updatedAt: '' }
+const store = createLiveStore(idle, () => window.voidlens?.getOcrWarmupStatus(),
+  (cb) => window.voidlens?.onOcrWarmupStatus(cb))
 export function useOcrWarmup() {
-  const [status, setStatus] = useState<OcrWarmupStatus>(idle)
-
-  useEffect(() => {
-    let unsub = () => {}
-    const boot = async () => {
-      if (!api()?.getOcrWarmupStatus) return
-      try {
-        setStatus(await api().getOcrWarmupStatus())
-      } catch {
-        // ignore
-      }
-      if (api().onOcrWarmupStatus) {
-        unsub = api().onOcrWarmupStatus(setStatus)
-      }
-    }
-    void boot()
-    return () => unsub()
-  }, [])
-
-  return status
+  return useSyncExternalStore(store.subscribe, store.getSnapshot)
 }

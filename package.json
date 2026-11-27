@@ -1,7 +1,7 @@
 {
   "name": "everything-warframe",
-  "version": "0.9.93",
-  "description": "Everything Warframe — overlay companion for Windows and Linux (Steam/Proton): worldstate, relics, rivens, foundry, inventory",
+  "version": "0.9.94",
+  "description": "Everything Warframe \u2014 overlay companion for Windows and Linux (Steam/Proton): worldstate, relics, rivens, foundry, inventory",
   "main": "dist-electron/main.cjs",
   "author": "Everything Warframe <hoeslovevid@users.noreply.github.com>",
   "license": "MIT",
@@ -27,7 +27,10 @@
     "dist:linux": "npm run build && electron-builder --linux",
     "release": "npm run build && electron-builder --win --publish always -c.win.signAndEditExecutable=false",
     "release:win": "npm run build && electron-builder --win --publish always -c.win.signAndEditExecutable=false",
-    "release:linux": "npm run build && electron-builder --linux --publish always"
+    "release:linux": "npm run build && electron-builder --linux --publish always",
+    "test": "node scripts/run-tests.mjs",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "ocr:replay": "node scripts/replay-ocr.mjs"
   },
   "dependencies": {
     "electron-updater": "^6.6.2",
@@ -52,7 +55,7 @@
   "build": {
     "appId": "com.voidlens.warframe-companion-helper",
     "productName": "Everything Warframe",
-    "copyright": "Copyright © Everything Warframe contributors",
+    "copyright": "Copyright \u00a9 Everything Warframe contributors",
     "directories": {
       "output": "release",
       "buildResources": "build"

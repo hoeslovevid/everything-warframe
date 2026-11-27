@@ -1,3 +1,4 @@
+import { RELIC_CONFIDENT_MATCH, RELIC_MIN_MATCH } from '../../shared/ocr-quality'
 import fs from 'node:fs'
 import path from 'node:path'
 import { app, nativeImage } from 'electron'
@@ -9,7 +10,7 @@ import { recognizeRewardNames, warmupOcr } from './ocr'
 import { sampleOcrUiScore, waitForOcrUiReady } from './ocr-readiness'
 import { captureRewardRegionVariants, cropRelicBandsFromPng } from './screen-capture'
 import { isPersistentCaptureLive } from './persistent-screen-capture'
-import { detectRewardPlayerCount, detectUiTheme, rankUiThemes, type WfThemeId } from './wfinfo-theme'
+import { detectRewardPlayerCount, detectUiTheme, rankUiThemes, rankTextCropThemes, type WfThemeId } from './wfinfo-theme'
 import { ensureWfinfoPrices, lookupWfinfoPrices } from './wfinfo-prices'
 import { loadSettings } from '../settings'
 import { recordRelicHaul } from './session-haul'
@@ -30,6 +31,8 @@ function nativeImageSafeSize(png: Buffer): { width: number; height: number } | n
 /** Last confident theme/slots — skip re-detect on the next scan when overrides are Auto. */
 let lastConfidentTheme: WfThemeId | null = null
 let lastConfidentSlots: 3 | 4 | null = null
+let lastConfidentAt = 0
+let lastCaptureContext = ''
 
 function cleanRelicOcr(ocrText: string): string {
   return ocrText
@@ -127,9 +130,23 @@ async function bestOcrForSlot(
       best = cleaned
     }
     // Catalog hit — skip remaining neighbors.
-    if (bestScore >= 0.45) break
-    // After two attempts with something readable, stop burning OCR slots.
-    if (tried >= 2 && best.length >= 6) break
+    if (bestScore >= RELIC_CONFIDENT_MATCH) break
+    // Bound neighbor retries even when the crop contains readable clutter.
+    if (tried >= 3) break
+  }
+  if (bestScore < RELIC_CONFIDENT_MATCH && !opts?.neighborsOnly) {
+    const primary = bandCrops[bandCrops.length >= 3 ? 1 : 0]
+    const alternatives = rankTextCropThemes(primary).filter((candidate) => candidate !== theme).slice(0, 2)
+    for (const alternateTheme of alternatives) {
+      const [raw] = await recognizeRewardNames([primary], alternateTheme)
+      const cleaned = cleanRelicOcr(raw || '')
+      const score = scoreOcrCandidate(cleaned)
+      if (score > bestScore) { best = cleaned; bestScore = score }
+      if (bestScore >= RELIC_CONFIDENT_MATCH) return best
+    }
+    const [raw] = await recognizeRewardNames([primary], theme, { unfiltered: true, multiline: true })
+    const cleaned = cleanRelicOcr(raw || '')
+    if (scoreOcrCandidate(cleaned) > bestScore) best = cleaned
   }
   return best
 }
@@ -141,6 +158,7 @@ function rewardFromOcr(cleaned: string, slot: number): RewardEval {
     const formaHit = matchCatalogItem('Forma Blueprint')
     if (formaHit) matched = { ...formaHit, score: Math.max(formaHit.score, 0.85) }
   }
+  if (matched && matched.score < RELIC_MIN_MATCH) matched = null
   const name = matched?.item.name || cleaned || `Reward ${slot + 1}`
   const uniqueName = matched?.item.uniqueName || null
   const setName = matched?.item.setName || null
@@ -172,16 +190,7 @@ function rewardFromOcr(cleaned: string, slot: number): RewardEval {
 }
 
 function filterUsefulRewards(next: RewardEval[]): RewardEval[] {
-  return next.filter(
-    (r) =>
-      r.matchScore >= 0.42 ||
-      /^forma(\s+blueprint)?$/i.test(r.ocrText.trim()) ||
-      /^forma(\s+blueprint)?$/i.test(r.name.trim()) ||
-      (r.ocrText.trim().length >= 10 &&
-        /prime|blueprint|systems|chassis|neuro|barrel|receiver|blade|stock|grip|hilt|link|string/i.test(
-          r.ocrText,
-        )),
-  )
+  return next.filter((r) => r.matchScore >= RELIC_MIN_MATCH)
 }
 
 function emitPartialRewards(rewards: RewardEval[], squadSize: number | null) {
@@ -217,10 +226,11 @@ const AUTO_HIDE_ERROR_MS = 12_000
 
 /** Below this UI score the reward strip is treated as gone. */
 const RELIC_GONE_SCORE = 0.25
-/** Consecutive low-score samples before auto-dismiss (~1.2s at 400ms). */
+/** Consecutive low-score samples before auto-dismiss (~2.4s at 800ms). */
 const RELIC_GONE_HITS = 3
-const RELIC_GONE_POLL_MS = 400
+const RELIC_GONE_POLL_MS = 800
 
+let scanGeneration = 0
 let hideTimer: NodeJS.Timeout | null = null
 let screenWatchTimer: NodeJS.Timeout | null = null
 let screenGoneHits = 0
@@ -392,6 +402,7 @@ export function onRelicScanUpdated(cb: Listener) {
 }
 
 export function clearRelicScan(): RelicScanState {
+  scanGeneration += 1
   cancelAutoHide()
   stopRelicScreenWatch()
   pendingSquadSize = null
@@ -422,7 +433,7 @@ export async function warmupRelicScanner(): Promise<void> {
   await Promise.all([
     ensureItemCatalog(),
     ensureWfinfoPrices().catch(() => {}),
-    warmupOcr().catch(() => {}),
+    warmupOcr(),
   ])
 }
 
@@ -430,6 +441,8 @@ export async function scanRelicRewards(
   trigger: 'manual' | 'log' = 'manual',
 ): Promise<RelicScanState> {
   if (state.scanning) return state
+  const generation = ++scanGeneration
+  const started = performance.now()
 
   cancelAutoHide()
   stopRelicScreenWatch()
@@ -461,8 +474,9 @@ export async function scanRelicRewards(
           err instanceof Error ? err.message : err,
         )
       }),
-      ensureWfinfoPrices().catch(() => {}),
     ])
+    void ensureWfinfoPrices().catch(() => {})
+    if (generation !== scanGeneration) return state
     if (trigger === 'log') {
       // Live stream: skip readiness poll (region grabs are cheap; UI usually painted).
       if (!isPersistentCaptureLive()) {
@@ -476,6 +490,13 @@ export async function scanRelicRewards(
       opts?: { ignoreCustomStrip?: boolean },
     ): Promise<RewardEval[]> => {
       const settings = loadSettings()
+      const context = JSON.stringify([settings.ocrDisplayId, settings.wfThemeOverride, settings.ocrScanRegions.relicStrip])
+      if (context !== lastCaptureContext || Date.now() - lastConfidentAt > 120_000) {
+        lastConfidentTheme = null
+        lastConfidentSlots = null
+        lastCaptureContext = context
+      }
+      if (generation !== scanGeneration) throw new Error('Scan dismissed')
       const ignoreCustom = Boolean(opts?.ignoreCustomStrip)
       const slotGuess =
         settings.relicSquadSizeOverride ?? squadSize ?? lastConfidentSlots ?? 4
@@ -516,6 +537,7 @@ export async function scanRelicRewards(
         })
       }
 
+      if (generation !== scanGeneration) throw new Error('Scan dismissed')
       if (!capture || capture.bands.length < 3) {
         throw new Error(
           process.platform === 'linux'
@@ -577,6 +599,7 @@ export async function scanRelicRewards(
         ),
       )
 
+      if (generation !== scanGeneration) throw new Error('Scan dismissed')
       let slotTexts = [...primaryNames]
 
       // Progressive: show primary-band hits immediately (before neighbor retries).
@@ -587,13 +610,13 @@ export async function scanRelicRewards(
         progressiveEarly.push(rewardFromOcr(cleaned, slot))
       }
       const earlyUseful = filterUsefulRewards(progressiveEarly)
-      if (earlyUseful.length) {
+      if (generation === scanGeneration && earlyUseful.length) {
         emitPartialRewards(earlyUseful, squadSize)
       }
 
       const weakSlots = slotTexts
         .map((t, i) => ({ t, i }))
-        .filter(({ t }) => scoreOcrCandidate(cleanRelicOcr(t || '')) < 0.45)
+        .filter(({ t }) => scoreOcrCandidate(cleanRelicOcr(t || '')) < RELIC_CONFIDENT_MATCH)
         .map(({ i }) => i)
 
       if (weakSlots.length) {
@@ -620,21 +643,21 @@ export async function scanRelicRewards(
         progressive.push(rewardFromOcr(cleaned, slot))
       }
       const partialUseful = filterUsefulRewards(progressive)
-      if (partialUseful.length && partialUseful.length !== earlyUseful.length) {
+      if (generation === scanGeneration && partialUseful.length) {
         emitPartialRewards(partialUseful, squadSize)
       }
 
       let next: RewardEval[] = progressive.map((r) => ({ ...r }))
       next = filterUsefulRewards(next)
 
-      if (saveDebugOnWeak && next.every((r) => r.matchScore < 0.45)) {
+      if (saveDebugOnWeak && next.every((r) => r.matchScore < RELIC_MIN_MATCH)) {
         saveRelicDebugCrops(bands, 'weak', capture.fullPng)
       }
 
       // Prefer image/settings squad hint when EE.log didn't supply one.
       const trimTo = settings.relicSquadSizeOverride ?? squadSize ?? slotHint
       if (trimTo != null && next.length > trimTo) {
-        const strong = next.filter((r) => r.matchScore >= 0.45)
+        const strong = next.filter((r) => r.matchScore >= RELIC_MIN_MATCH)
         const keep = strong.length >= trimTo ? strong : next
         next = [...keep]
           .sort((a, b) => b.matchScore - a.matchScore)
@@ -656,14 +679,14 @@ export async function scanRelicRewards(
 
     let rewards = await buildRewards(false)
     // Catalog match required — length alone is not "useful" (junk like "449-e").
-    let useful = rewards.some((r) => r.matchScore >= 0.45)
+    let useful = rewards.some((r) => r.matchScore >= RELIC_MIN_MATCH)
 
     // Proton log flush / UI paint can lag — one retry when the first pass is empty.
     if (!useful) {
       console.info('[Everything Warframe] Relic OCR weak — retrying capture…')
       await new Promise((r) => setTimeout(r, process.platform === 'linux' ? 400 : 150))
       rewards = await buildRewards(true)
-      useful = rewards.some((r) => r.matchScore >= 0.45)
+      useful = rewards.some((r) => r.matchScore >= RELIC_MIN_MATCH)
     }
 
     // Custom Layout OCR strip often covers whole cards / wrong slots — fall back.
@@ -672,7 +695,7 @@ export async function scanRelicRewards(
         '[Everything Warframe] Relic OCR weak with custom strip — trying built-in geometry…',
       )
       rewards = await buildRewards(true, null, { ignoreCustomStrip: true })
-      useful = rewards.some((r) => r.matchScore >= 0.45)
+      useful = rewards.some((r) => r.matchScore >= RELIC_MIN_MATCH)
     }
 
     // Theme mis-detect: try runner-up UI themes once (skip when user forced a theme).
@@ -686,7 +709,7 @@ export async function scanRelicRewards(
         rewards = await buildRewards(false, alt, {
           ignoreCustomStrip: Boolean(loadSettings().ocrScanRegions.relicStrip),
         })
-        useful = rewards.some((r) => r.matchScore >= 0.45)
+        useful = rewards.some((r) => r.matchScore >= RELIC_MIN_MATCH)
         if (useful) break
       }
     }
@@ -711,6 +734,9 @@ export async function scanRelicRewards(
       )
     }
 
+    if (generation !== scanGeneration) return state
+    if (lastMeta) lastMeta.durationMs = Math.round(performance.now() - started)
+
     // Local WFInfo prices first (instant), then show the strip immediately.
     try {
       const local = lookupWfinfoPrices(rewards.map((r) => r.name))
@@ -731,7 +757,7 @@ export async function scanRelicRewards(
     }
 
     // Remember confident theme + slot count so the next Auto scan skips re-detect.
-    const strong = rewards.filter((r) => r.matchScore >= 0.55)
+    const strong = rewards.filter((r) => r.matchScore >= RELIC_CONFIDENT_MATCH)
     if (strong.length >= Math.ceil(rewards.length / 2) && lastMeta?.theme) {
       if ((WF_THEME_IDS as string[]).includes(lastMeta.theme)) {
         lastConfidentTheme = lastMeta.theme as WfThemeId
@@ -743,6 +769,7 @@ export async function scanRelicRewards(
             ? 4
             : null
       if (slots) lastConfidentSlots = slots
+      lastConfidentAt = Date.now()
     }
 
     state = {
@@ -766,7 +793,7 @@ export async function scanRelicRewards(
     if (missing.length) {
       void lookupMarketPrices(missing)
         .then((live) => {
-          if (!state.active || state.scanning) return
+          if (generation !== scanGeneration || !state.active || state.scanning) return
           let changed = false
           const next = state.rewards.map((r) => {
             if (r.platinum != null) return r
@@ -784,6 +811,7 @@ export async function scanRelicRewards(
 
     return state
   } catch (err) {
+    if (generation !== scanGeneration) return state
     state = {
       ...state,
       scanning: false,

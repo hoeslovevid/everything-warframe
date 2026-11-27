@@ -1,0 +1,107 @@
+/* Companion surfaces stay opaque to avoid expensive full-window backdrop compositing. */
+html:not(.is-overlay) {
+  --vl-font-body: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+  --vl-font-display: 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
+  --vl-type-body: .88rem;
+  --vl-type-page: 2rem;
+  --vl-radius: 8px;
+  --vl-radius-lg: 12px;
+}
+html:not(.is-overlay)[data-theme='void'] {
+  --vl-void-950: #0b0e13;
+  --vl-void-900: #0e1219;
+  --vl-void-850: #141a23;
+  --vl-void-800: #1b2330;
+  --vl-void-700: #253143;
+  --vl-frost: #e0e7ef;
+  --vl-mist: #9baabd;
+  --vl-mist-dim: #7e90a6;
+  --vl-panel: #141a23;
+  --vl-panel-solid: #141a23;
+  --vl-panel-border: #263141;
+  --vl-surface: #10161e;
+  --vl-surface-border: #263141;
+  --vl-input-bg: #0e141d;
+  --vl-input-border: #344155;
+  --vl-teal: #369d8d;
+  --vl-teal-bright: #77d9bc;
+  --vl-accent: #77d9bc;
+  --vl-ok: #77d9bc;
+  --vl-accent-soft: #77d9bc14;
+  --vl-nav-hover: #1b2430;
+  --vl-nav-active-a: #77d9bc12;
+}
+.companion-root { background: var(--vl-void-900); }
+.companion-root::before { display: none; }
+.companion-content { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.companion-nav { flex-basis: 226px; width: 226px; padding: 26px 14px 16px; background: var(--vl-void-950); backdrop-filter: none; border-right: 1px solid var(--vl-panel-border); }
+.brand { font-size: 13px; line-height: 1.3; font-weight: 650; letter-spacing: -.01em; text-transform: none; }
+.brand-lockup { gap: 10px; }
+.brand-mark { background: var(--vl-accent-soft); border-radius: 10px; border-color: var(--vl-panel-border); }
+.brand-sub { margin: 16px 4px 10px; font-size: 8px; letter-spacing: .13em; color: var(--vl-mist-dim); padding-bottom: 20px; }
+.nav-section { font-size: 10px; letter-spacing: .09em; margin-top: 22px; margin-bottom: 8px; }
+.nav-btn { font-size: 12px; padding: 10px 12px; border-radius: 7px; min-height: 36px; flex-shrink: 0; }
+.nav-btn.active { color: var(--vl-accent); }
+.nav-btn.active::before { left: -14px; width: 3px; }
+.nav-btn__icon { width: 15px; height: 15px; }
+.app-topbar { flex-shrink: 0; min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 12px 32px; border-bottom: 1px solid var(--vl-panel-border); }
+.app-breadcrumb { display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--vl-mist); white-space: nowrap; }
+.app-breadcrumb span { color: var(--vl-mist-dim); }
+.app-breadcrumb strong { color: var(--vl-frost); font-weight: 500; }
+.app-topbar__actions { display: flex; align-items: center; gap: 18px; }
+.app-game-state { font-size: 11px; color: var(--vl-mist); display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+.app-search { display: flex; align-items: center; gap: 28px; padding: 7px 10px; border: 1px solid var(--vl-panel-border); color: var(--vl-mist); background: var(--vl-void-850); border-radius: 6px; font-size: 11px; }
+.app-search kbd { font: 10px 'Cascadia Code', monospace; color: var(--vl-mist-dim); }
+.app-overlay-toggle { border: 1px solid var(--vl-panel-border); background: transparent; color: var(--vl-mist); border-radius: 6px; padding: 7px 10px; font-size: 11px; white-space: nowrap; }
+.app-overlay-toggle.is-on { color: var(--vl-accent); border-color: color-mix(in srgb, var(--vl-accent) 30%, var(--vl-panel-border)); background: var(--vl-accent-soft); }
+.companion-main { padding: 30px 32px 48px; animation: none; scroll-behavior: auto; }
+.companion-main > * { animation: none; }
+.companion-main > .page-header { max-width: none; margin-bottom: 26px; }
+.companion-main .page-title { text-transform: none; font-weight: 650; letter-spacing: -.04em; line-height: 1.18; margin-bottom: 10px; }
+.companion-main .page-title-rule { display: none; }
+.companion-main .page-desc { font-size: 13px; }
+.companion-main .vl-panel { background: var(--vl-void-850); backdrop-filter: none; box-shadow: none; animation: none; }
+.companion-main .vl-panel:hover { box-shadow: none; }
+.companion-main .vl-panel::before { display: none; }
+.companion-main .vl-panel__header { padding: 18px 20px 10px; }
+.companion-main .vl-panel__title { font-size: 13px; text-transform: none; letter-spacing: -.01em; font-weight: 600; color: var(--vl-frost); }
+.companion-main .vl-panel__subtitle { color: var(--vl-mist); font-size: 11px; }
+.companion-main .vl-panel__body { padding: 8px 20px 20px; }
+.companion-main .riven-card, .companion-main .relic-card { background: var(--vl-surface); backdrop-filter: none; }
+.companion-main .riven-compare { min-width: 0; }
+.companion-main .btn { font-size: 12px; padding: 9px 13px; border-radius: 7px; }
+.companion-main .btn.primary { background: var(--vl-accent); color: var(--vl-void-950); border-color: var(--vl-accent); font-weight: 650; }
+.companion-main .btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--vl-accent) 85%, white); }
+.mission-shortcuts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 24px; }
+.mission-shortcut { text-align: left; background: var(--vl-void-850); color: var(--vl-frost); border: 1px solid var(--vl-panel-border); border-radius: 12px; padding: 20px; transition: border-color 120ms; }
+.mission-shortcut:hover { border-color: var(--vl-accent); }
+.mission-shortcut.is-scan { border-color: color-mix(in srgb, var(--vl-accent) 35%, var(--vl-panel-border)); background: linear-gradient(120deg, var(--vl-accent-soft), transparent), var(--vl-void-850); }
+.mission-shortcut__index { display: block; color: var(--vl-mist); font: 9px 'Cascadia Code', monospace; letter-spacing: .08em; margin-bottom: 22px; }
+.mission-shortcut.is-scan .mission-shortcut__index { color: var(--vl-accent); }
+.mission-shortcut strong { display: flex; justify-content: space-between; gap: 8px; font-size: 15px; font-weight: 600; letter-spacing: -.02em; }
+.mission-shortcut strong span { color: var(--vl-mist); }
+.mission-shortcut small { display: block; color: var(--vl-mist); font-size: 11px; margin-top: 8px; }
+.dashboard-extras { margin: 24px 0; border-top: 1px solid var(--vl-panel-border); border-bottom: 1px solid var(--vl-panel-border); padding: 16px 0; }
+.dashboard-extras summary { cursor: pointer; font-size: 12px; color: var(--vl-mist); }
+.dashboard-extras summary span { float: right; font-size: 10px; }
+.dashboard-extras__body { margin-top: 20px; }
+.workspace-loading { padding: 40px 0; color: var(--vl-mist); font-size: 13px; }
+.companion-root :focus-visible { outline: 2px solid var(--vl-accent); outline-offset: 3px; }
+.companion-root ::-webkit-scrollbar-thumb { background: var(--vl-scroll-thumb); box-shadow: none; border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+@media (max-width: 1180px) { .app-game-state { display: none; } .app-search { gap: 12px; } .mission-shortcut { padding: 16px; } }
+@media (min-width: 761px) and (max-width: 980px) {
+  .companion-shell, .companion-shell.is-nav-collapsed { flex-direction: row; }
+  .companion-nav, .companion-nav.is-collapsed { flex: 0 0 176px; width: 176px; height: auto; max-height: none; overflow-y: auto; flex-direction: column; align-items: stretch; padding: 20px 10px; border-right: 1px solid var(--vl-panel-border); }
+  .companion-nav .nav-btn { width: 100%; justify-content: start; white-space: normal; }
+  .companion-nav .nav-section { display: flex; } .companion-main { padding: 24px; }
+  .app-topbar { padding: 12px 24px; } .app-search { display: none; }
+}
+@media (max-width: 760px) {
+  .companion-nav, .companion-nav.is-collapsed { flex: 0 0 auto; width: 100%; max-height: 108px; padding: 10px; flex-flow: row wrap; gap: 4px; overflow: auto; }
+  .companion-nav .brand-lockup, .companion-nav .brand-sub, .companion-nav .nav-section, .companion-nav .nav-collapse-btn { display: none; }
+  .companion-nav .nav-btn { width: auto; min-height: 32px; white-space: nowrap; padding: 8px 10px; margin: 0; font-size: 11px; }
+  .companion-main { padding: 20px 16px 32px; } .app-topbar { padding: 12px 16px; min-height: 54px; }
+  .app-breadcrumb { font-size: 11px; gap: 8px; } .app-search { display: none; }
+  .mission-shortcuts { grid-template-columns: 1fr; gap: 10px; }
+  .mission-shortcut__index { margin-bottom: 12px; } .companion-main .page-title { font-size: 26px; }
+}

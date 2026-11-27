@@ -129,7 +129,7 @@ async function queryLinux(): Promise<{ running: boolean; foreground: boolean }> 
   if (!running) return { running: false, foreground: false }
 
   // X11: optional active-window check. Wayland usually can't — treat running as playable.
-  let foreground = running
+  let foreground: boolean = running
   try {
     const { stdout } = await execFileAsync(
       'xdotool',

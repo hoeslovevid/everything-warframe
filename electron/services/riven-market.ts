@@ -6,6 +6,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { app } from 'electron'
 import type { RivenRoll, RivenStatLine } from '../../shared/types'
+import { isCompleteRiven } from '../../shared/ocr-quality'
 import { weaponBaseName } from './riven-preferences'
 
 export type RivenMarketQuote = {
@@ -451,8 +452,8 @@ export async function enrichRivensWithMarket(
   reroll: RivenRoll | null,
 ): Promise<{ current: RivenRoll | null; reroll: RivenRoll | null }> {
   const [cq, rq, cSlug, rSlug] = await Promise.all([
-    current ? lookupRivenMarketQuote(current).catch(() => null) : Promise.resolve(null),
-    reroll ? lookupRivenMarketQuote(reroll).catch(() => null) : Promise.resolve(null),
+    current && isCompleteRiven(current) ? lookupRivenMarketQuote(current).catch(() => null) : Promise.resolve(null),
+    reroll && isCompleteRiven(reroll) ? lookupRivenMarketQuote(reroll).catch(() => null) : Promise.resolve(null),
     current ? resolveRivenWeaponSlug(current.weapon).catch(() => null) : Promise.resolve(null),
     reroll ? resolveRivenWeaponSlug(reroll.weapon).catch(() => null) : Promise.resolve(null),
   ])

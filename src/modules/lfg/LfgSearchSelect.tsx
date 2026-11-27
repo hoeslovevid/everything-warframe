@@ -33,7 +33,7 @@ export function LfgSearchSelect({
   onSelect,
 }: Props) {
   const listId = useId()
-  const rootRef = useRef<HTMLDivElement | null>(null)
+  const rootRef = useRef<HTMLLabelElement | null>(null)
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
   const [query, setQuery] = useState(value)

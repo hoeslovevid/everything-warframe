@@ -1334,6 +1334,15 @@ function getPrimaryDisplayInfo() {
   return getOcrDisplayInfo()
 }
 
+/** A scan started from the companion must not read the companion covering the game. */
+async function uncoverGameForScan(sender: Electron.WebContents) {
+  if (!companionWindow || companionWindow.isDestroyed() ||
+    sender !== companionWindow.webContents || !companionWindow.isFocused()) return
+  companionWindow.minimize()
+  // Let the compositor reveal the game before asking the capture service for a frame.
+  await new Promise((resolve) => setTimeout(resolve, process.platform === 'linux' ? 180 : 100))
+}
+
 function registerIpc() {
   ipcMain.handle('settings:get', () => loadSettings())
   ipcMain.handle('settings:export', async () => {
@@ -1665,7 +1674,10 @@ function registerIpc() {
   })
   ipcMain.handle('relics:get', () => getRelicScanState())
   ipcMain.handle('ocr:warmupStatus', () => getOcrWarmupStatus())
-  ipcMain.handle('relics:scan', async () => runRelicScan('manual'))
+  ipcMain.handle('relics:scan', async (event) => {
+    await uncoverGameForScan(event.sender)
+    return runRelicScan('manual')
+  })
   ipcMain.handle('relics:clear', () => dismissRelicPopup())
   ipcMain.handle('relics:ackCelebration', () => {
     const state = ackRelicCelebration()
@@ -1680,7 +1692,10 @@ function registerIpc() {
     return state
   })
   ipcMain.handle('rivens:get', () => getRivenScanState())
-  ipcMain.handle('rivens:scan', async () => runRivenScan('manual'))
+  ipcMain.handle('rivens:scan', async (event) => {
+    await uncoverGameForScan(event.sender)
+    return runRivenScan('manual')
+  })
   ipcMain.handle('rivens:clear', () => dismissRivenPopup())
   ipcMain.handle('rivens:history', async () => {
     const { getRivenHistory } = await import('./services/riven-history')

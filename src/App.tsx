@@ -1,6 +1,6 @@
-import { useEffect } from 'react'
-import { CompanionApp } from './app/companion/CompanionApp'
-import { OverlayApp } from './app/overlay/OverlayApp'
+import { lazy, Suspense, useEffect } from 'react'
+const CompanionApp = lazy(() => import('./app/companion/CompanionApp').then((m) => ({ default: m.CompanionApp })))
+const OverlayApp = lazy(() => import('./app/overlay/OverlayApp').then((m) => ({ default: m.OverlayApp })))
 
 function resolveWindow(): 'companion' | 'overlay' {
   const params = new URLSearchParams(window.location.search)
@@ -20,5 +20,5 @@ export default function App() {
     console.info(`[Everything Warframe] renderer mode=${mode} url=${window.location.href}`)
   }, [mode])
 
-  return mode === 'overlay' ? <OverlayApp /> : <CompanionApp />
+  return <Suspense fallback={null}>{mode === 'overlay' ? <OverlayApp /> : <CompanionApp />}</Suspense>
 }

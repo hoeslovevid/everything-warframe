@@ -10,6 +10,7 @@ const emptyWorldstate: WorldstateSnapshot = {
   fetchedAt: '',
   error: null,
   stale: false,
+  circuit: null,
   cycles: [],
   fissures: [],
   baro: null,

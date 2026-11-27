@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
-import { RivenScanState } from '../../shared/types'
+import { useCallback, useSyncExternalStore } from 'react'
+import type { RivenScanState } from '../../shared/types'
+import { createLiveStore } from './liveStore'
 
 const empty: RivenScanState = {
   active: false,
@@ -12,37 +13,20 @@ const empty: RivenScanState = {
   recommendation: 'none',
 }
 
-function api() {
-  return window.voidlens
-}
+
+const store = createLiveStore(empty, () => window.voidlens?.getRivenScan(),
+  (cb) => window.voidlens?.onRivenScanUpdated(cb))
 
 export function useRivenScan() {
-  const [state, setState] = useState<RivenScanState>(empty)
-
-  useEffect(() => {
-    let unsub = () => {}
-    const boot = async () => {
-      if (!api()?.getRivenScan) return
-      setState(await api().getRivenScan())
-      unsub = api().onRivenScanUpdated(setState)
-    }
-    void boot()
-    return () => unsub()
-  }, [])
-
+  const state = useSyncExternalStore(store.subscribe, store.getSnapshot)
   const scan = useCallback(async () => {
-    if (!api()?.scanRivens) return
-    setState((prev) => ({ ...prev, scanning: true, error: null, active: true }))
-    const next = await api().scanRivens()
-    setState(next)
-    return next
+    try { return await store.request(() => window.voidlens?.scanRivens()) }
+    catch (err) {
+      store.set({ ...store.getSnapshot(), scanning: false, active: true,
+        error: err instanceof Error ? err.message : 'Scan failed. Try again.' })
+      throw err
+    }
   }, [])
-
-  const clear = useCallback(async () => {
-    if (!api()?.clearRivenScan) return
-    const next = await api().clearRivenScan()
-    setState(next)
-  }, [])
-
+  const clear = useCallback(() => store.request(() => window.voidlens?.clearRivenScan()), [])
   return { state, scan, clear }
 }

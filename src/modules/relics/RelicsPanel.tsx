@@ -77,7 +77,7 @@ function RewardCard({
   onDeepLink?: (target: DeepLinkTarget, query: string) => void
 }) {
   const needed = reward.needed
-  const lowConf = reward.matchScore > 0 && reward.matchScore < 0.55
+  const lowConf = reward.matchScore > 0 && reward.matchScore < 0.82
   const priceBits: string[] = []
   if (reward.platinum != null) {
     priceBits.push(`~${reward.platinum}p`)
@@ -112,7 +112,9 @@ function RewardCard({
         {ownershipLabel(reward, compact)}
       </div>
       {priceBits.length ? <div className="relic-card__meta">{priceBits.join(' · ')}</div> : null}
-      {lowConf ? <div className="relic-card__meta">Low OCR confidence</div> : null}
+      <div className={`reading-quality ${lowConf ? 'is-uncertain' : ''}`} title={`Catalog match strength: ${Math.round(reward.matchScore * 100)}%. This is a matching score, not a measured probability.`}>
+        <i aria-hidden />{lowConf ? 'Verify item name' : 'Strong catalog match'}
+      </div>
       {!compact && reward.setTotalParts > 0 ? (
         <div className="relic-card__progress">
           Set parts owned {reward.setOwnedParts}/{reward.setTotalParts}

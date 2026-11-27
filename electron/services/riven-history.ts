@@ -104,10 +104,10 @@ export function recordRivenScan(state: RivenScanState): void {
         : null
 
   const next: RivenHistoryEntry[] = []
-  if (state.current) {
+  if (state.current && isCompleteRiven(state.current)) {
     next.push(entryFromRoll(state.current, state.scannedAt, pickedSide === 'current'))
   }
-  if (state.reroll) {
+  if (state.reroll && isCompleteRiven(state.reroll)) {
     next.push(entryFromRoll(state.reroll, state.scannedAt, pickedSide === 'reroll'))
   }
   if (!next.length) return
@@ -137,3 +137,4 @@ export function updateRivenHistoryPrices(state: RivenScanState): void {
   })
   if (changed) saveRaw(next)
 }
+import { isCompleteRiven } from '../../shared/ocr-quality'

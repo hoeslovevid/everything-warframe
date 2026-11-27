@@ -1,6 +1,6 @@
 :root {
-  --vl-font-display: 'Orbitron', sans-serif;
-  --vl-font-body: 'Sora', sans-serif;
+  --vl-font-display: 'Bahnschrift', 'Segoe UI', system-ui, sans-serif;
+  --vl-font-body: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
   --vl-radius: 10px;
   --vl-radius-sm: 8px;
   --vl-radius-lg: 14px;
@@ -534,3 +534,8 @@ code {
     transform: none !important;
   }
 }
+
+/* Recognition quality is distinct from item value and roll grade. */
+.reading-quality { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--vl-ok); margin: 7px 0; }
+.reading-quality i { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.reading-quality.is-uncertain { color: var(--vl-warn); }

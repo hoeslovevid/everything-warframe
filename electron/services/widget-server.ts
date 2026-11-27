@@ -32,6 +32,7 @@ function emptyWorld(): WorldstateSnapshot {
     fetchedAt: new Date(0).toISOString(),
     stale: true,
     error: null,
+    circuit: null,
     cycles: [],
     fissures: [],
     baro: null,

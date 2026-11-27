@@ -1,3 +1,4 @@
+import { prepareOcrPixels } from './ocr-image'
 /**
  * WFInfo-style OCR: theme/lavender text isolation → tiny crops → Tesseract
  * (PSM.SINGLE_LINE) → closed-vocab match in relic-scanner / riven-grader.
@@ -6,18 +7,28 @@
  * and inaccurate on Warframe UI. Capture still uses Electron region grabs.
  */
 import path from 'node:path'
+import fs from 'node:fs'
+import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { app, nativeImage } from 'electron'
 import { createWorker, PSM, Worker } from 'tesseract.js'
 import { filterRelicTextPng, filterRivenTextPng, type WfThemeId } from './wfinfo-theme'
 import { RIVEN_CARD_LINE_BANDS } from '../../shared/captureGeometry'
+import { preferReading, findTextRows, isCompleteRiven, type TextReading } from '../../shared/ocr-quality'
+import { parseRivenOcr } from './riven-grader'
 
 const nodeRequire = createRequire(__filename)
 
 let tessPool: Worker[] = []
 let tessAvailable: Worker[] = []
-const tessWaiters: Array<(w: Worker) => void> = []
+const tessWaiters: Array<{ resolve: (w: Worker) => void; reject: (err: Error) => void }> = []
 let tessLoading: Promise<Worker[]> | null = null
+let shuttingDown = false
+let warmupTask: Promise<void> | null = null
+const readingCache = new Map<string, TextReading>()
+// Tesseract 5 otherwise generates unused HTML, TSV and layout output per crop.
+const TEXT_OUTPUT = { text: true, blocks: false, layoutBlocks: false, hocr: false,
+  tsv: false, box: false, unlv: false, osd: false, pdf: false }
 
 let ocrPriorityDepth = 0
 
@@ -38,12 +49,12 @@ const RIVEN_PANEL_BAND = RIVEN_CARD_LINE_BANDS.panel
 const RIVEN_NAME_BAND = RIVEN_CARD_LINE_BANDS.name
 const RIVEN_STAT_BANDS = RIVEN_CARD_LINE_BANDS.stats
 
-/** Briefly raise priority while OCR runs so Warframe doesn't starve us. */
+/** Use normal scheduling for short OCR jobs; return to background priority afterward. */
 export async function withOcrPriority<T>(fn: () => Promise<T>): Promise<T> {
   ocrPriorityDepth += 1
   if (ocrPriorityDepth === 1) {
     try {
-      osSetPriorityAbove()
+      osSetPriorityForScan()
     } catch {
       // ignore
     }
@@ -62,13 +73,10 @@ export async function withOcrPriority<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-function osSetPriorityAbove() {
+function osSetPriorityForScan() {
   const os = nodeRequire('node:os') as typeof import('node:os')
-  try {
-    os.setPriority(os.constants.priority.PRIORITY_ABOVE_NORMAL)
-  } catch {
-    os.setPriority(os.constants.priority.PRIORITY_NORMAL)
-  }
+  // Restore normal scheduling during recognition without outranking the game.
+  os.setPriority(os.constants.priority.PRIORITY_NORMAL)
 }
 
 function osSetPriorityBelow() {
@@ -89,19 +97,21 @@ async function desiredPoolSize(): Promise<number> {
 
 async function createTessWorker(): Promise<Worker> {
   const cachePath = path.join(app.getPath('userData'), 'tesseract-cache')
+  await fs.promises.mkdir(cachePath, { recursive: true })
   const w = await createWorker('eng', 1, {
     cachePath,
     logger: () => {},
   })
-  await w.setParameters({
+  try { await w.setParameters({
     tessedit_char_whitelist: RELIC_WHITELIST,
     tessedit_pageseg_mode: PSM.SINGLE_LINE,
     user_defined_dpi: '300',
-  })
+  }) } catch (err) { await w.terminate().catch(() => {}); throw err }
   return w
 }
 
 async function loadTessPool(): Promise<Worker[]> {
+  if (shuttingDown) throw new Error('OCR is shutting down')
   if (tessPool.length) return tessPool
   if (!tessLoading) {
     tessLoading = (async () => {
@@ -125,7 +135,10 @@ async function loadTessPool(): Promise<Worker[]> {
           (pool.length === 1 ? ' (enable Dual OCR workers in Settings for speed)' : ''),
       )
       return pool
-    })()
+    })().catch((err) => {
+      tessLoading = null
+      throw err
+    })
   }
   return tessLoading
 }
@@ -134,18 +147,31 @@ async function acquireTess(): Promise<Worker> {
   await loadTessPool()
   const free = tessAvailable.pop()
   if (free) return free
-  return new Promise<Worker>((resolve) => {
-    tessWaiters.push(resolve)
+  if (shuttingDown) throw new Error('OCR is shutting down')
+  return new Promise<Worker>((resolve, reject) => {
+    tessWaiters.push({ resolve, reject })
   })
 }
 
 function releaseTess(w: Worker) {
+  if (shuttingDown || !tessPool.includes(w)) return
   const waiter = tessWaiters.shift()
   if (waiter) {
-    waiter(w)
+    waiter.resolve(w)
     return
   }
   tessAvailable.push(w)
+}
+
+async function readPrepared(w: Worker, png: Buffer, key: string): Promise<TextReading> {
+  const hash = createHash('sha256').update(key).update(png).digest('hex')
+  const cached = readingCache.get(hash)
+  if (cached) return cached
+  const result = await w.recognize(png, {}, TEXT_OUTPUT)
+  const reading = { text: result.data.text || '', confidence: result.data.confidence || 0 }
+  if (readingCache.size >= 96) readingCache.delete(readingCache.keys().next().value!)
+  readingCache.set(hash, reading)
+  return reading
 }
 
 async function withTessSlot<T>(fn: (w: Worker) => Promise<T>): Promise<T> {
@@ -209,104 +235,26 @@ function electronPngToRgba(png: Buffer): {
   }
 }
 
-function sharpFromPng(png: Buffer) {
-  const sharp = nodeRequire('sharp') as typeof import('sharp')
-  const decoded = electronPngToRgba(png)
-  if (decoded) {
-    return sharp(Buffer.from(decoded.data), {
-      raw: { width: decoded.width, height: decoded.height, channels: 4 },
-    })
-  }
-  return sharp(png)
-}
-
 /** PNG prep for Tesseract relic name crops (black text on white). */
-async function prepareRelicPng(
-  png: Buffer,
-  scale: number,
-  theme?: WfThemeId | null,
-  useFilter = true,
-): Promise<Buffer> {
-  const filtered = useFilter && theme ? filterRelicTextPng(png, theme) : png
+async function prepareRelicPng(png: Buffer, scale: number, theme?: WfThemeId | null, useFilter = true): Promise<Buffer> {
   try {
-    const decoded = electronPngToRgba(filtered)
-    let pipeline = sharpFromPng(filtered).grayscale().normalize()
-    if (!useFilter || !theme) {
-      // Light UI text on dark mesh without theme mask → invert for Tess.
-      pipeline = pipeline.negate().linear(1.3, -12)
-    } else {
-      pipeline = pipeline.sharpen({ sigma: 0.6 })
-    }
-    if (decoded && scale !== 1) {
-      pipeline = pipeline.resize({
-        width: Math.round(decoded.width * scale),
-        kernel: 'lanczos3',
-      })
-    } else if (scale !== 1) {
-      pipeline = pipeline.resize({
-        width: Math.max(64, Math.round(220 * scale)),
-        kernel: 'lanczos3',
-      })
-    }
-    return pipeline
-      .extend({
-        top: 16,
-        bottom: 16,
-        left: 14,
-        right: 14,
-        background: { r: 255, g: 255, b: 255, alpha: 1 },
-      })
-      .png()
-      .toBuffer()
+    const pixels = electronPngToRgba(png)
+    if (!pixels) return png
+    return await prepareOcrPixels(pixels, { mode: 'relic', filtered: useFilter, theme, targetWidth: Math.round(pixels.width * scale) })
   } catch {
-    const prep = nativeContrastPrep(filtered, { scale: Math.max(1, scale), harsh: true })
-    if (useFilter && theme) return prep
-    try {
-      return await sharpFromPng(prep).negate().png().toBuffer()
-    } catch {
-      return prep
-    }
+    const source = useFilter && theme ? filterRelicTextPng(png, theme) : png
+    return nativeContrastPrep(source, { scale, harsh: true })
   }
 }
 
-/**
- * Prep a riven crop: text isolate → black-on-white → upscale.
- * Unfiltered path inverts light UI text so Tess sees dark glyphs.
- */
-async function prepareRivenLinePng(
-  png: Buffer,
-  targetWidth = 900,
-  useFilter = true,
-): Promise<Buffer> {
-  const source = useFilter ? filterRivenTextPng(png) : png
+async function prepareRivenLinePng(png: Buffer, targetWidth = 900, useFilter = true): Promise<Buffer> {
   try {
-    let pipeline = sharpFromPng(source).grayscale().normalize()
-    if (!useFilter) {
-      // Light lavender/white on dark mesh → invert to black-on-white.
-      pipeline = pipeline.negate().linear(1.35, -16)
-    } else {
-      pipeline = pipeline.linear(1.25, -10).sharpen({ sigma: 0.85 })
-    }
-    return await pipeline
-      .extend({
-        top: 18,
-        bottom: 18,
-        left: 22,
-        right: 22,
-        background: { r: 255, g: 255, b: 255, alpha: 1 },
-      })
-      .resize({ width: targetWidth, kernel: 'lanczos3' })
-      .png()
-      .toBuffer()
+    const pixels = electronPngToRgba(png)
+    if (!pixels) return png
+    return await prepareOcrPixels(pixels, { mode: 'riven', filtered: useFilter, targetWidth })
   } catch {
-    const prep = nativeContrastPrep(source, { scale: 3.0, harsh: true })
-    if (useFilter) return prep
-    // nativeContrastPrep leaves light-on-dark when unfiltered — invert via sharp/native
-    try {
-      return await sharpFromPng(prep).negate().png().toBuffer()
-    } catch {
-      return prep
-    }
+    const source = useFilter ? filterRivenTextPng(png) : png
+    return nativeContrastPrep(source, { scale: 3, harsh: true })
   }
 }
 
@@ -323,24 +271,19 @@ function filterRivenLines(lines: string[]): string[] {
   })
 }
 
-function countRivenStatHints(lines: string[]): number {
-  return lines.filter(
-    (line) => /^[+\-–—]?\s*\d/.test(line) || /%|x\d/i.test(line),
-  ).length
+function completeRivenLines(lines: string[]): boolean {
+  return isCompleteRiven(parseRivenOcr(lines.join('\n'), 'current'))
 }
 
 function mergeRivenPasses(passes: string[][]): string {
-  const merged: string[] = []
-  const seen = new Set<string>()
+  let best = '', bestScore = -1
   for (const lines of passes) {
-    for (const line of lines) {
-      const key = line.toLowerCase()
-      if (seen.has(key)) continue
-      seen.add(key)
-      merged.push(line)
-    }
+    const text = lines.join('\n').trim()
+    const roll = parseRivenOcr(text, 'current')
+    const score = roll.stats.length * 10 + Number(isCompleteRiven(roll)) * 5 + Number(roll.weapon !== 'Unknown Riven')
+    if (score > bestScore) { best = text; bestScore = score }
   }
-  return merged.join('\n').trim()
+  return best
 }
 
 function trimRivenCardLetterbox(png: Buffer): Buffer {
@@ -385,9 +328,9 @@ async function cropRivenBand(
     const { width: w, height: h } = img.getSize()
     if (w <= 40 || h <= 40) return null
     // Inset past the purple crystal frame on both sides.
-    const x = Math.round(w * 0.16)
+    const x = Math.round(w * 0.04)
     const y = Math.round(h * (band.top + dy))
-    const width = Math.max(1, Math.round(w * 0.68))
+    const width = Math.max(1, Math.round(w * 0.92))
     const height = Math.max(1, Math.round(h * band.height))
     if (y >= h || x >= w || y + 8 >= h) return null
     const cropH = Math.min(height, h - Math.max(0, y))
@@ -422,19 +365,19 @@ async function ocrRivenCrop(
 ): Promise<string> {
   const useFilter = opts?.filter !== false
   const psm = opts?.psm ?? PSM.SINGLE_LINE
-  const prepared = await prepareRivenLinePng(png, psm === PSM.SINGLE_BLOCK ? 900 : 720, useFilter)
+  const prepared = await prepareRivenLinePng(png, psm === PSM.SINGLE_LINE ? 720 : 1000, useFilter)
   return withTessSlot(async (w) => {
     await w.setParameters({
       tessedit_char_whitelist: RIVEN_WHITELIST,
       tessedit_pageseg_mode: psm,
       user_defined_dpi: '300',
     })
-    const result = await w.recognize(prepared)
-    const raw = (result.data.text || '')
+    const result = await readPrepared(w, prepared, `riven:${psm}`)
+    const raw = result.text
       .split(/\r?\n/)
       .map((l) => l.trim())
       .filter(Boolean)
-    if (psm === PSM.SINGLE_BLOCK) {
+    if (psm !== PSM.SINGLE_LINE) {
       return filterRivenLines(raw).join('\n')
     }
     return raw.join(' ').replace(/\s+/g, ' ').trim()
@@ -445,7 +388,7 @@ async function ocrSingleLine(
   png: Buffer,
   mode: 'relic' | 'riven',
   theme?: WfThemeId | null,
-  opts?: { rivenFilter?: boolean; relicFilter?: boolean },
+  opts?: { rivenFilter?: boolean; relicFilter?: boolean; psm?: PSM },
 ): Promise<string> {
   if (mode === 'relic') {
     try {
@@ -460,11 +403,15 @@ async function ocrSingleLine(
     return withTessSlot(async (w) => {
       await w.setParameters({
         tessedit_char_whitelist: RELIC_WHITELIST,
-        tessedit_pageseg_mode: PSM.SINGLE_LINE,
+        tessedit_pageseg_mode: opts?.psm ?? PSM.SINGLE_LINE,
         user_defined_dpi: '300',
       })
-      const result = await w.recognize(prepared)
-      return (result.data.text || '')
+      let result = await readPrepared(w, prepared, `relic:${opts?.psm ?? PSM.SINGLE_LINE}`)
+      if (useFilter && theme && result.confidence < 65) {
+        const alternate = await prepareRelicPng(png, 2, theme, false)
+        result = preferReading(result, await readPrepared(w, alternate, `relic:${opts?.psm ?? PSM.SINGLE_LINE}`))
+      }
+      return result.text
         .split(/\r?\n/)
         .map((l) => l.trim())
         .filter(Boolean)
@@ -511,7 +458,18 @@ async function ocrRivenLineSlices(png: Buffer, dy = 0): Promise<string[]> {
     RIVEN_NAME_BAND,
     ...RIVEN_STAT_BANDS,
   ]
-  const crops = await Promise.all(lineBands.map((b) => cropRivenBand(png, b, dy)))
+  let crops: Array<Buffer | null> = []
+  const panel = await cropRivenBand(png, RIVEN_PANEL_BAND, dy)
+  if (panel) {
+    const image = nativeImage.createFromBuffer(panel)
+    const mask = nativeImage.createFromBuffer(filterRivenTextPng(panel))
+    const { width, height } = mask.getSize()
+    const rows = findTextRows(mask.toBitmap(), width, height)
+    if (rows.length >= 2 && rows.length <= 9) {
+      crops = rows.map((row) => image.crop({ x: 0, y: row.top, width, height: row.height }).toPNG())
+    }
+  }
+  if (!crops.length) crops = await Promise.all(lineBands.map((b) => cropRivenBand(png, b, dy)))
   const texts = await Promise.all(
     crops.map(async (crop) => {
       if (!crop) return ''
@@ -532,13 +490,22 @@ async function ocrRivenLineSlices(png: Buffer, dy = 0): Promise<string[]> {
  */
 async function ocrRivenCardLines(png: Buffer, dy = 0): Promise<string[]> {
   let lines = await ocrRivenPanel(png, dy)
-  if (countRivenStatHints(lines) >= 2) return lines
+  if (completeRivenLines(lines)) return lines
+
+  // A broad sparse pass locates text when custom capture boxes include extra art,
+  // or UI scale moves the card text outside the standard line bands.
+  const broad = await cropRivenBand(png, { top: .52, height: .47 }, dy)
+  if (broad) {
+    const sparse = filterRivenLines((await ocrRivenCrop(broad, { filter: true, psm: PSM.SPARSE_TEXT })).split('\n'))
+    lines = mergeRivenPasses([lines, sparse]).split('\n').filter(Boolean)
+    if (completeRivenLines(lines)) return lines
+  }
 
   const unfiltered = await ocrRivenPanelUnfiltered(png, dy)
   lines = filterRivenLines(
     mergeRivenPasses([lines, unfiltered]).split(/\n/).filter(Boolean),
   )
-  if (countRivenStatHints(lines) >= 2) return lines
+  if (completeRivenLines(lines)) return lines
 
   const sliced = await ocrRivenLineSlices(png, dy)
   return filterRivenLines(
@@ -553,13 +520,17 @@ async function ocrRivenCardLines(png: Buffer, dy = 0): Promise<string[]> {
 export async function recognizeRewardNames(
   images: Buffer[],
   theme?: WfThemeId | null,
+  opts?: { unfiltered?: boolean; multiline?: boolean },
 ): Promise<string[]> {
   return withOcrPriority(async () => {
     await loadTessPool()
     return Promise.all(
       images.map(async (png) => {
         try {
-          let text = await ocrSingleLine(png, 'relic', theme, { relicFilter: true })
+          let text = await ocrSingleLine(png, 'relic', theme, {
+            relicFilter: !opts?.unfiltered,
+            psm: opts?.multiline ? PSM.SINGLE_BLOCK : PSM.SINGLE_LINE,
+          })
           // Theme mis-detect / dim glyphs — one unfiltered pass like riven salvage.
           if (!text || text.replace(/\s/g, '').length < 4) {
             const alt = await ocrSingleLine(png, 'relic', theme, { relicFilter: false })
@@ -605,7 +576,7 @@ export async function recognizeRivenBlocks(
     return Promise.all(
       images.map(async (png) => {
         const primary = await ocrRivenCardLines(png, 0)
-        if (!opts?.deep || countRivenStatHints(primary) >= 2) {
+        if (!opts?.deep || completeRivenLines(primary)) {
           return primary.join('\n')
         }
         // One vertical nudge only (not ± both + full cascade).
@@ -630,32 +601,37 @@ function tinyWarmupPng(): Buffer {
   return nativeImage.createFromBitmap(bgra, { width: w, height: h }).toPNG()
 }
 
-export async function warmupOcr(): Promise<void> {
+async function runWarmup(): Promise<void> {
   const pool = await loadTessPool()
   const warm = tinyWarmupPng()
-  try {
-    await Promise.all(
+  await Promise.all(
       pool.map(async () => {
         await withTessSlot(async (worker) => {
           await worker.setParameters({
             tessedit_char_whitelist: RELIC_WHITELIST,
             tessedit_pageseg_mode: PSM.SINGLE_LINE,
           })
-          await worker.recognize(warm)
+          await worker.recognize(warm, {}, TEXT_OUTPUT)
         })
       }),
     )
-  } catch {
-    // ignore warmup failures
-  }
   console.info(`[Everything Warframe] OCR warmup: Tesseract ready ×${pool.length}`)
 }
 
+export function warmupOcr(): Promise<void> {
+  if (!warmupTask) warmupTask = runWarmup().catch((err) => { warmupTask = null; throw err })
+  return warmupTask
+}
+
 export async function shutdownOcr(): Promise<void> {
+  shuttingDown = true
+  if (tessLoading) await tessLoading.catch(() => {})
   const workers = [...tessPool]
   tessPool = []
   tessAvailable = []
-  tessWaiters.length = 0
+  for (const waiter of tessWaiters.splice(0)) waiter.reject(new Error('OCR stopped'))
   tessLoading = null
+  warmupTask = null
+  readingCache.clear()
   await Promise.all(workers.map((w) => w.terminate().catch(() => {})))
 }

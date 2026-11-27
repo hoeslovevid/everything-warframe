@@ -37,6 +37,20 @@ npm install
 npm start
 ```
 
+The companion includes **Mission control** and a dedicated **Scan workspace** for relics and rivens. Open Scan workspace to adjust the game display and theme, calibrate capture areas, or start a timed scan. Scans started from the companion minimize it so its own UI cannot cover the game. In-game hotkeys still scan immediately.
+
+Recognition reads the primary region first, retries weak regions, and uses a wider sparse-text pass for riven captures with extra artwork. Relic text rows are separated from ducat icons and rarity bars. Uncertain item matches are rejected; incomplete riven readings withhold recommendations and market estimates. Match strength is a heuristic, not a measured accuracy probability.
+
+```bash
+npm test              # Recognition, parsing and scan-state regressions
+npm run typecheck     # Renderer and Electron types
+npm run build         # Renderer chunks and Electron bundles
+npm run ocr:replay -- riven path/to/card-crop.png
+npm run ocr:replay -- relic path/to/reward-name-crop.png
+```
+
+Offline replay runs the same pixel preparation and parser against saved crops, without capturing the desktop. It uses a local `eng.traineddata` when present or the normal Tesseract download/cache. Replay does not exercise native capture, screen permissions, overlay placement, or timing during live gameplay.
+
 **Windows / OneDrive:** Prefer day-to-day dev outside OneDrive sync:
 
 ```powershell

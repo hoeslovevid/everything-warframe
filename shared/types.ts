@@ -157,6 +157,8 @@ export type RivenRoll = {
 }
 
 export type RivenScanState = {
+  /** Capture and recognition time, excluding optional market requests. */
+  durationMs?: number
   active: boolean
   scanning: boolean
   scannedAt: string
@@ -1932,6 +1934,7 @@ export type RewardEval = {
 }
 
 export type RelicScanMeta = {
+  durationMs?: number
   theme: string | null
   slotHint: number | null
   trimmedTo: number | null

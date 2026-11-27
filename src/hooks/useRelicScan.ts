@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
-import { RelicScanState } from '../../shared/types'
+import { useCallback, useSyncExternalStore } from 'react'
+import type { RelicScanState } from '../../shared/types'
+import { createLiveStore } from './liveStore'
 
 const empty: RelicScanState = {
   active: false,
@@ -14,43 +15,21 @@ const empty: RelicScanState = {
   scanMeta: null,
 }
 
-function api() {
-  return window.voidlens
-}
+
+const store = createLiveStore(empty, () => window.voidlens?.getRelicScan(),
+  (cb) => window.voidlens?.onRelicScanUpdated(cb))
 
 export function useRelicScan() {
-  const [state, setState] = useState<RelicScanState>(empty)
-
-  useEffect(() => {
-    let unsub = () => {}
-    const boot = async () => {
-      if (!api()) return
-      setState(await api().getRelicScan())
-      unsub = api().onRelicScanUpdated(setState)
-    }
-    void boot()
-    return () => unsub()
-  }, [])
-
+  const state = useSyncExternalStore(store.subscribe, store.getSnapshot)
   const scan = useCallback(async () => {
-    if (!api()) return
-    setState((prev) => ({ ...prev, scanning: true, error: null }))
-    const next = await api().scanRelicRewards()
-    setState(next)
-    return next
+    try { return await store.request(() => window.voidlens?.scanRelicRewards()) }
+    catch (err) {
+      store.set({ ...store.getSnapshot(), scanning: false, active: true,
+        error: err instanceof Error ? err.message : 'Scan failed. Try again.' })
+      throw err
+    }
   }, [])
-
-  const clear = useCallback(async () => {
-    if (!api()) return
-    const next = await api().clearRelicScan()
-    setState(next)
-  }, [])
-
-  const ackCelebration = useCallback(async () => {
-    if (!api()?.ackRelicCelebration) return
-    const next = await api().ackRelicCelebration()
-    setState(next)
-  }, [])
-
+  const clear = useCallback(() => store.request(() => window.voidlens?.clearRelicScan()), [])
+  const ackCelebration = useCallback(() => store.request(() => window.voidlens?.ackRelicCelebration()), [])
   return { state, scan, clear, ackCelebration }
 }

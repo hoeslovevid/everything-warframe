@@ -1,3 +1,4 @@
+import { isCompleteRiven } from '../../shared/ocr-quality'
 import { RivenRoll, RivenStatLine, RivenTier } from '../../shared/types'
 import {
   applyPrefDesirability,
@@ -134,6 +135,10 @@ const STAT_META: Record<
 /** Fix common Warframe UI OCR mistakes before matching. */
 function scrubOcr(s: string) {
   return s
+    .replace(/[−–—﹣－]/g, '-')
+    .replace(/(\d),(?=\d)/g, '$1.')
+    .replace(/(\d)\s*\.\s*(\d)/g, '$1.$2')
+    .replace(/\bHea[l1]\b/gi, 'Heat')
     .replace(/[|*·•‚’‘]/g, ' ')
     // Faction multipliers often use a unicode times glyph instead of "x"
     .replace(/[×✕✖⨯ⅹ]/g, 'x')
@@ -469,10 +474,10 @@ function extractStatsFromBlob(ocrText: string): RivenStatLine[] {
 
   const lower = blob.toLowerCase()
 
-  const findByValue = (valueRaw: string) => {
+  const findByValue = (valueRaw: string, canon: string) => {
     const v = parseNumberToken(valueRaw)
     if (v == null) return -1
-    return stats.findIndex((s) => Math.abs(Math.abs(s.value) - Math.abs(v)) < 0.051)
+    return stats.findIndex((s) => s.name === canon && Math.abs(s.value - v) < 0.051)
   }
 
   const tryPush = (
@@ -492,7 +497,7 @@ function extractStatsFromBlob(ocrText: string): RivenStatLine[] {
     const meta = STAT_META[canon]
     if (meta && Math.abs(stat.value) > meta.max * 1.85) return
 
-    const sameValue = findByValue(valueRaw)
+    const sameValue = findByValue(valueRaw, canon)
     if (sameValue >= 0) {
       const prev = stats[sameValue]
       // Same number again (multi-pass OCR) — keep one; prefer plain crit over slide.
@@ -505,10 +510,7 @@ function extractStatsFromBlob(ocrText: string): RivenStatLine[] {
 
     const existing = stats.findIndex((s) => s.name === stat.name)
     if (existing >= 0) {
-      const prev = stats[existing]
-      const prevDist = Math.abs(Math.abs(prev.value) - (meta?.max ?? 100) * 0.55)
-      const nextDist = Math.abs(Math.abs(stat.value) - (meta?.max ?? 100) * 0.55)
-      if (nextDist < prevDist) stats[existing] = stat
+      // Keep the first reading in this pass; the OCR layer selects entire passes.
       usedRanges.push({ start: valueStart, end: nameEnd })
       return
     }
@@ -616,7 +618,7 @@ function extractStatsFromBlob(ocrText: string): RivenStatLine[] {
         .replace(/\s*[x×]\s*\d[\s\S]*$/i, '')
         .trim()
       if (!valueRaw || !namePart || namePart.length > 40) continue
-      if (findByValue(valueRaw) >= 0) continue
+      if (findByValue(valueRaw, namePart) >= 0) continue
       const hit =
         STAT_META[namePart]
           ? { canon: namePart, meta: STAT_META[namePart] }
@@ -794,6 +796,9 @@ export function recommendRolls(
   reroll: RivenRoll | null,
 ): RivenRecommendation {
   if (!current || !reroll) return { recommendation: 'none', note: null }
+  if (!isCompleteRiven(current) || !isCompleteRiven(reroll)) {
+    return { recommendation: 'none', note: 'Incomplete reading. Verify both cards or scan again before choosing a roll.' }
+  }
   const delta = reroll.score - current.score
   if (Math.abs(delta) >= 4) {
     const better = delta > 0 ? reroll : current

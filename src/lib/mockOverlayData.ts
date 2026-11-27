@@ -325,6 +325,7 @@ export const MOCK_RELIC_REWARDS: RewardEval[] = [
 
 export function buildPreviewWorldstate(live: WorldstateSnapshot): WorldstateSnapshot {
   return {
+    circuit: live.circuit ?? null,
     fetchedAt: live.fetchedAt || new Date().toISOString(),
     error: live.error ?? null,
     stale: live.stale ?? false,

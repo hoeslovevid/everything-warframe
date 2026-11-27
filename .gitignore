@@ -12,6 +12,7 @@ Thumbs.db
 .env.*
 .vscode
 *.local
+*.traineddata
 lfg-api/lfg-data.json
 lfg-api/lfg-data.json.migrated
 lfg-api/data/*.sqlite

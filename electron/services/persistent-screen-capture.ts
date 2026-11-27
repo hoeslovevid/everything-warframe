@@ -173,7 +173,7 @@ function installDisplayMediaHandler() {
       } catch (err) {
         console.warn('[Everything Warframe] display media callback failed', err)
       }
-    }, { useSystemPicker: true })
+    })
     return
   }
 

@@ -1,3 +1,4 @@
+import { rankCatalogMatch } from './catalog-match'
 import fs from 'node:fs'
 import https from 'node:https'
 import path from 'node:path'
@@ -149,6 +150,7 @@ function httpsGetJson(url: string): Promise<unknown> {
 
 function rebuildIndexes(items: CatalogItem[]) {
   catalog = items
+  matchCache.clear()
   bySet = new Map()
   byNormalized = new Map()
   byUnique = new Map()
@@ -384,113 +386,18 @@ export function isItemCatalogReady(): boolean {
   return byUnique.size > 0
 }
 
-function levenshtein(a: string, b: string): number {
-  if (a === b) return 0
-  if (!a.length) return b.length
-  if (!b.length) return a.length
-  const row = new Array(b.length + 1)
-  for (let j = 0; j <= b.length; j++) row[j] = j
-  for (let i = 1; i <= a.length; i++) {
-    let prev = i - 1
-    row[0] = i
-    for (let j = 1; j <= b.length; j++) {
-      const cur = row[j]
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1
-      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + cost)
-      prev = cur
-    }
-  }
-  return row[b.length]
-}
-
-const SKIP_WORDS = new Set([
-  'OWNED',
-  'CRAFTED',
-  'UNRANKED',
-  'MASTERED',
-  'THE',
-  'AND',
-  'FOR',
-])
-
-function tokens(s: string): string[] {
-  return s.split(' ').filter((w) => w.length >= 2 && !SKIP_WORDS.has(w))
-}
-
-/** Fuzzy single-token match (typos / truncated OCR prefixes). */
-function tokenMatches(a: string, b: string): boolean {
-  if (a === b) return true
-  if (a.length >= 3 && b.length >= 3 && (a.startsWith(b) || b.startsWith(a))) return true
-  if (a.length >= 5 && b.length >= 5) {
-    const dist = levenshtein(a, b)
-    const maxLen = Math.max(a.length, b.length)
-    if (dist <= (maxLen >= 8 ? 2 : 1)) return true
-    // Distinctive suffixes: NEUROPTICS ↔ RUROPTICS / TEAROPTICS
-    if (a.length >= 6 && b.includes(a.slice(-5))) return true
-    if (b.length >= 6 && a.includes(b.slice(-5))) return true
-  }
-  return false
-}
-
-/**
- * Match OCR reward text to the catalog.
- * `score` is confidence in [0, 1] (1 = exact). Downstream thresholds use this ratio.
- */
+/** Cached, ambiguity-aware match against the loaded reward vocabulary. */
+const matchCache = new Map<string, { item: CatalogItem; score: number } | null>()
 export function matchCatalogItem(ocrText: string): { item: CatalogItem; score: number } | null {
   const needle = normalizeItemName(ocrText)
-  if (!needle || needle.length < 3) return null
-  const needleToks = tokens(needle)
-  if (!needleToks.length) return null
-
+  if (needle.length < 3) return null
   const exact = byNormalized.get(needle)
   if (exact) return { item: exact, score: 1 }
-
-  let best: CatalogItem | null = null
-  let bestScore = 0
-
-  for (const item of catalog) {
-    if (item.normalized === needle) return { item, score: 1 }
-
-    const itemToks = tokens(item.normalized)
-    if (!itemToks.length) continue
-
-    // Containment of the full normalized string
-    let score = 0
-    if (item.normalized.includes(needle) || needle.includes(item.normalized)) {
-      const shorter = Math.min(item.normalized.length, needle.length)
-      const longer = Math.max(item.normalized.length, needle.length)
-      score = Math.max(score, shorter / longer)
-    }
-
-    // Token-set coverage (order-independent — "Chassis Mirage" vs "Mirage Chassis")
-    let matched = 0
-    for (const it of itemToks) {
-      if (needleToks.some((nt) => tokenMatches(it, nt))) matched++
-    }
-    const tokenScore = matched / Math.max(itemToks.length, needleToks.length)
-    // Prefer explaining catalog words when OCR is short/noisy
-    const catalogCoverage = matched / itemToks.length
-    score = Math.max(score, tokenScore, catalogCoverage * 0.95)
-
-    // Full-string Levenshtein ratio for near-misses of similar length
-    if (Math.abs(item.normalized.length - needle.length) <= 10) {
-      const dist = levenshtein(needle, item.normalized)
-      const maxLen = Math.max(item.normalized.length, needle.length)
-      const ratio = 1 - dist / maxLen
-      if (ratio >= 0.7) score = Math.max(score, ratio)
-    }
-
-    if (score < 0.42) continue
-    if (
-      score > bestScore + 1e-6 ||
-      (Math.abs(score - bestScore) < 1e-6 && best && item.name.length > best.name.length)
-    ) {
-      best = item
-      bestScore = score
-    }
-  }
-
-  return best ? { item: best, score: Math.min(1, bestScore) } : null
+  if (matchCache.has(needle)) return matchCache.get(needle)!
+  const result = rankCatalogMatch(needle, catalog)
+  if (matchCache.size >= 256) matchCache.delete(matchCache.keys().next().value!)
+  matchCache.set(needle, result)
+  return result
 }
 
 export function getSetParts(setName: string | null): CatalogItem[] {

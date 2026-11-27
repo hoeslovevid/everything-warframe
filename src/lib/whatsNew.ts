@@ -441,6 +441,14 @@ export const WHATS_NEW: Record<string, string[]> = {
   ],
 }
 
+WHATS_NEW['0.9.94'] = [
+  'Redesigned companion dashboard with a persistent workspace bar and dedicated Scan workspace',
+  'Timed scans, display and theme controls, and automatic companion minimization before capture',
+  'Improved relic text isolation and item matching; clearer handling of uncertain rewards',
+  'Improved riven number and sign recognition; incomplete readings withhold roll recommendations',
+  'Dismissed scans stay dismissed, with shared subscriptions and lower background OCR overhead',
+]
+
 export function getWhatsNewBullets(version: string): string[] {
   return WHATS_NEW[version] || [
     `Updated to ${version}`,

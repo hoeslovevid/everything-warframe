@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { isCompleteRiven } from '../../../shared/ocr-quality'
 import { rivenStripLayout } from '../../../shared/captureGeometry'
 import { RivenHistoryEntry, RivenHistoryResult, RivenRoll, RivenScanState } from '../../../shared/types'
 import { Panel } from '../../components/Panel'
@@ -53,11 +54,14 @@ function RollCard({
       <div className="riven-card__label">{label}</div>
       <div className="riven-card__weapon">{roll.weapon}</div>
       {roll.polarity ? <div className="riven-card__polarity">{roll.polarity}</div> : null}
-      <div className={`riven-card__tier is-${roll.tier}`}>
+      <div className={`reading-quality ${isCompleteRiven(roll) ? '' : 'is-uncertain'}`}>
+        <i aria-hidden />{isCompleteRiven(roll) ? `${roll.stats.length} stats read` : 'Partial reading · verify card'}
+      </div>
+      {isCompleteRiven(roll) ? <div className={`riven-card__tier is-${roll.tier}`}>
         {roll.tier}
         <span>{roll.score}/100</span>
-      </div>
-      {roll.verdict ? (
+      </div> : null}
+      {roll.verdict && isCompleteRiven(roll) ? (
         <div className={`riven-card__verdict is-${roll.verdict}`} title={roll.verdictNote || undefined}>
           {roll.verdict}
           {roll.avgQuality != null ? <span> · {roll.avgQuality}% avg</span> : null}
